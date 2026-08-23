@@ -4,6 +4,7 @@ import { LogOut, PanelLeftClose, PanelLeftOpen, Plus, Search, X } from "lucide-r
 import { AssetButton } from "@/components/asset-button"
 import { AssetDialog } from "@/components/asset-dialog"
 import { LoadingScreen, LoginScreen } from "@/components/auth-screens"
+import { GitHubMark } from "@/components/icons/github-mark"
 import { PreferenceControls } from "@/components/preference-controls"
 import { SessionActions } from "@/components/session-actions"
 import { SessionViewport } from "@/components/session"
@@ -161,6 +162,7 @@ export default function App() {
           title="GitHub"
           className="inline-flex h-7 shrink-0 items-center rounded-md border border-[var(--border)] px-2 font-mono text-[9px] font-medium tabular-nums text-[var(--subtle)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
+          <GitHubMark className="size-3" />
           {__APP_VERSION__}
         </a>
       </header>

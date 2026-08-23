@@ -94,6 +94,16 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
+:root[data-standalone="true"] body::before {
+  position: fixed;
+  z-index: 100;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top);
+  background: var(--panel);
+  content: "";
+  pointer-events: none;
+}
+
 .touch-session-action {
   display: none;
 }

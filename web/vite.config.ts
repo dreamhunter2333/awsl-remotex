@@ -27,6 +27,7 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         globPatterns: ["**/*.{js,css,html,woff2,svg}"],
+        globIgnores: ["icon.svg"],
         navigateFallbackDenylist: [/^\/api\//, /^\/guacamole\//],
       },
     }),
