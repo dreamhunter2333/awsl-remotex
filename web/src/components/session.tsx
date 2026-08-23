@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
-import { LoaderCircle, Maximize2, Minimize2, Power, RefreshCw, Settings2 } from "lucide-react"
+import { Keyboard, LoaderCircle, Maximize2, Minimize2, Power, RefreshCw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { Asset } from "@/lib/api"
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 
 export interface SessionHandle {
   disconnect: () => Promise<void>
+  showKeyboard: () => boolean
 }
 
 export const SessionViewport = forwardRef<SessionHandle, {
@@ -42,6 +43,12 @@ export const SessionViewport = forwardRef<SessionHandle, {
       tokenRef.current = ""
       const encoded = encodeURIComponent(token)
       await fetch(`/guacamole/api/tokens/${encoded}?token=${encoded}`, { method: "DELETE", keepalive: true }).catch(() => undefined)
+    },
+    showKeyboard: () => {
+      const input = iframeRef.current?.contentDocument?.querySelector<HTMLTextAreaElement>(".client textarea:not(.clipboard-service-target)")
+      if (!input) return false
+      input.focus({ preventScroll: true })
+      return input.ownerDocument.activeElement === input
     },
   }), [])
   useEffect(() => {
@@ -207,9 +214,10 @@ function readGuacamoleToken(value: string | null | undefined) {
   }
 }
 
-export function SessionActions({ active, fullscreen, onReconnect, onFullscreen, onDisconnect }: {
+export function SessionActions({ active, fullscreen, onKeyboard, onReconnect, onFullscreen, onDisconnect }: {
   active: boolean
   fullscreen: boolean
+  onKeyboard: () => void
   onReconnect: () => void
   onFullscreen: () => void
   onDisconnect: () => void
@@ -223,6 +231,7 @@ export function SessionActions({ active, fullscreen, onReconnect, onFullscreen, 
 
   return (
     <div className="relative flex shrink-0 items-center border-l border-[var(--border)] px-1">
+      <Button className="touch-session-action" variant="ghost" size="icon" disabled={!active} onClick={onKeyboard} aria-label={t("keyboard")} title={t("keyboard")}><Keyboard className="size-4" /></Button>
       <div className="hidden items-center gap-0.5 @[520px]:flex">
         <Button variant="ghost" size="icon" disabled={!active} onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-4" /></Button>
         <Button variant="ghost" size="icon" disabled={!active} onClick={onFullscreen} aria-label={t(fullscreen ? "exitFullscreen" : "fullscreen")} title={t(fullscreen ? "exitFullscreen" : "fullscreen")}>{fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</Button>

@@ -93,6 +93,14 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
+.touch-session-action {
+  display: none;
+}
+
+:root[data-touch-device="true"] .touch-session-action {
+  display: inline-flex;
+}
+
 button,
 input {
   font-family: inherit;

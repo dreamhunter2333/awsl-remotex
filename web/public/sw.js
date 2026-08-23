@@ -1,4 +1,4 @@
-const CACHE = "awsl-remotex-shell-v2"
+const CACHE = "awsl-remotex-shell-v3"
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"]
 
 self.addEventListener("install", (event) => {

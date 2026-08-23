@@ -241,6 +241,7 @@ export default function App() {
             <SessionActions
               active={Boolean(activeAsset)}
               fullscreen={fullscreen}
+              onKeyboard={() => activeAsset && session.showKeyboard(activeAsset.id)}
               onReconnect={() => activeAsset && session.reconnect(activeAsset)}
               onFullscreen={toggleFullscreen}
               onDisconnect={() => activeAsset && session.close(activeAsset.id)}

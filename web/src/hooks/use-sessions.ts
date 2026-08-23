@@ -138,6 +138,10 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     else handlesRef.current.delete(id)
   }, [])
 
+  const showKeyboard = useCallback((id: string) => {
+    handlesRef.current.get(id)?.showKeyboard()
+  }, [])
+
   const reset = useCallback(() => {
     for (const handle of handlesRef.current.values()) void handle.disconnect()
     handlesRef.current.clear()
@@ -204,6 +208,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     ready: resolveReady,
     activity: markActivity,
     registerHandle,
+    showKeyboard,
     reset,
   }
 }
