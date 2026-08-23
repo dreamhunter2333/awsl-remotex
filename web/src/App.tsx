@@ -170,7 +170,7 @@ export default function App() {
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-xs text-[var(--foreground)] outline-none placeholder:text-[var(--subtle)]"
+                className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--foreground)] outline-none placeholder:text-[var(--subtle)]"
                 placeholder={t("filterConnections")}
                 aria-label={t("filterConnections")}
               />
@@ -205,7 +205,7 @@ export default function App() {
           </div>
 
           <div className="flex justify-start border-t border-[var(--border)] p-2">
-            <Button variant="ghost" size="sm" onClick={() => openDialog()}><Plus className="size-4" />{t("addAsset")}</Button>
+            <Button variant="ghost" size="sm" onClick={() => openDialog()}><Plus className="size-3.5" />{t("addAsset")}</Button>
           </div>
         </aside>
 

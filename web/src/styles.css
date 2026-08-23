@@ -11,6 +11,8 @@
   font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 :root,
@@ -93,7 +95,7 @@ body {
 
 button,
 input {
-  font: inherit;
+  font-family: inherit;
 }
 
 button {
