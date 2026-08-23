@@ -13,7 +13,6 @@ import { displayGroup, protocolMeta } from "@/lib/assets"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 import { useSessions } from "@/hooks/use-sessions"
-import { usePWAUpdate } from "@/hooks/use-pwa-update"
 
 export default function App() {
   const { t } = usePreferences()
@@ -37,7 +36,6 @@ export default function App() {
     t("connectionFailed"),
     t("sessionEnded"),
   )
-  const pwa = usePWAUpdate()
 
   useEffect(() => {
     api
@@ -155,6 +153,16 @@ export default function App() {
         <div className="min-w-0 flex-1" />
         <PreferenceControls />
         {authStatus.required && <Button variant="ghost" size="icon" onClick={logout} aria-label={t("logout")} title={t("logout")}><LogOut className="size-4" /></Button>}
+        <a
+          href="https://github.com/dreamhunter2333/awsl-remotex"
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Awsl RemoteX ${__APP_VERSION__} · GitHub`}
+          title="GitHub"
+          className="inline-flex h-7 shrink-0 items-center rounded-md border border-[var(--border)] px-2 font-mono text-[9px] font-medium tabular-nums text-[var(--subtle)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          {__APP_VERSION__}
+        </a>
       </header>
 
       <div className={cn(
@@ -276,10 +284,9 @@ export default function App() {
       </div>
 
       <AssetDialog key={editingAsset?.id ?? "new"} asset={editingAsset} open={dialogOpen} onClose={closeDialog} onSubmit={saveAsset} onDelete={deleteAsset} />
-      {(session.idleClosed || pwa.updateAvailable) && (
+      {session.idleClosed && (
         <div className="fixed bottom-[calc(.75rem+env(safe-area-inset-bottom))] left-1/2 z-50 flex -translate-x-1/2 flex-col gap-1.5">
-          {session.idleClosed && <button type="button" onClick={session.clearIdleClosed} className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-xs shadow-lg">{t("idleSessionClosed", { name: session.idleClosed })}</button>}
-          {pwa.updateAvailable && <button type="button" onClick={pwa.applyUpdate} className="rounded-lg border border-[var(--accent)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--accent)] shadow-lg">{t("updateAvailable")} · {t("updateNow")}</button>}
+          <button type="button" onClick={session.clearIdleClosed} className="rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-xs shadow-lg">{t("idleSessionClosed", { name: session.idleClosed })}</button>
         </div>
       )}
     </div>

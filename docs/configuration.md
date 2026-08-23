@@ -35,9 +35,11 @@ Mount `/app/data` on persistent storage. It contains the SQLite database. Keep `
 - Language, theme, sidebar state, open tabs, and custom key combinations are stored in browser local storage.
 - The soft-keyboard button is shown only on touch phones and tablets.
 - The key-combination button is available on both touch and desktop devices; its list opens only after the button is clicked.
-- On iOS/iPadOS, remove and reinstall an existing PWA if a changed status-bar style is not applied.
+- The PWA checks for updates when opened, when returning to the foreground, and every 15 minutes. A new version activates and reloads automatically.
+- iOS/iPadOS uses an opaque black status bar to avoid the system blur material. Remove and reinstall an existing PWA after this metadata changes.
 
 - 语言、主题、侧边栏状态、已打开 Tab 和自定义快捷键保存在浏览器本地存储中。
 - 软键盘按钮只在触屏手机和平板上显示。
 - 发送按键按钮在移动端和桌面端均可用，点击按钮后才展开快捷键列表。
-- iOS/iPadOS 未应用新的状态栏样式时，请移除并重新安装已有 PWA。
+- PWA 会在启动、回到前台以及每 15 分钟自动检查更新；发现新版本后自动激活并刷新。
+- iOS/iPadOS 使用不透明黑色状态栏，避免系统模糊材质；状态栏元数据变化后，请移除并重新安装已有 PWA。

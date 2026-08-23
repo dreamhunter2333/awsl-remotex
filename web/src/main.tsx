@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client"
 
 import App from "./App"
 import { PreferencesProvider } from "./lib/preferences"
-import { registerServiceWorker } from "./lib/service-worker"
+import "./lib/pwa"
 import "./styles.css"
 
 const touchDevice = navigator.maxTouchPoints > 0 && (
@@ -19,5 +19,3 @@ createRoot(document.getElementById("root")!).render(
     </PreferencesProvider>
   </StrictMode>,
 )
-
-registerServiceWorker()
