@@ -1,71 +1,94 @@
 # Awsl RemoteX
 
-Awsl-RemoteX 是一个轻量、浏览器端的远程控制工作台。
+**English** | [简体中文](README.zh-CN.md)
 
-## 范围
+Awsl RemoteX is a lightweight, modern browser-based remote workspace for managing SSH, RDP, and VNC connections in one place.
 
-- SSH
-- RDP
-- VNC
-- 多连接持久 Tab
-- 可完全隐藏的资产侧边栏
-- 资产增删改查与端口连通测试
-- 单资产加密凭据与自动登录
-- 中英文、One Half 深浅主题、同步配色的 SSH 终端与 PWA
-- 可选全局登录密码
-- SQLite 本地存储
-- Apache Guacamole 远程协议栈
+## Features
 
-项目不提供会话录制、录像回放、命令审计、审批流和内网网页代理。
+- SSH, RDP, and VNC remote connections
+- Multiple connection tabs with fast session switching
+- Single-click selection and double-click connection
+- Create, edit, delete, and test asset reachability
+- Encrypted passwords and SSH private keys with automatic login
+- Fully hideable asset sidebar
+- Reconnect, disconnect, and fullscreen controls
+- One Half Dark, One Half Light, and system themes
+- Chinese and English interfaces
+- Installable PWA for desktop and mobile devices
+- Optional global access password
+- Local SQLite storage
 
-## 技术栈
+## Usage
 
-- Go
-- SQLite（WAL）
-- React + TypeScript + Vite
-- shadcn/ui 风格的本地组件
-- Apache Guacamole 1.6.0
+1. Add an SSH, RDP, or VNC asset from the bottom of the sidebar.
+2. Single-click an asset to select it, or double-click it to connect immediately.
+3. Use the edit button on an asset to update, test, or delete it.
+4. Each connection opens in its own tab. Reconnect, fullscreen, and disconnect controls are available on the right side of the tab bar.
+5. Remote displays automatically resize when the sidebar or browser window changes.
 
-## 本地开发
+## Docker Compose
 
-```bash
-pnpm --dir web install
-pnpm --dir web dev
-go run ./cmd/server
+Clone the repository, then create `.env`:
+
+```dotenv
+GUACAMOLE_JSON_SECRET=<output of openssl rand -hex 16>
+CREDENTIAL_KEY=<output of openssl rand -hex 32>
+AUTH_PASSWORD=
+GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
 ```
 
-前端开发服务器监听 `5173`，并将 `/api` 转发到 Go 服务的 `8080` 端口。
+`AUTH_PASSWORD` is optional. Set it and use HTTPS when exposing the service publicly.
 
-## 环境变量
+```yaml
+services:
+  awsl-remotex:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
+      GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
+      GUACAMOLE_UPSTREAM: http://guacamole:8080
+    depends_on:
+      - guacamole
+    restart: unless-stopped
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `ADDR` | `:8080` | Go HTTP 服务监听地址 |
-| `DATABASE_PATH` | `data/awsl-remotex.db` | SQLite 数据库路径 |
-| `WEB_DIR` | `web/dist` | 前端构建产物目录 |
-| `AUTH_PASSWORD` | 空 | 可选的全局登录密码；留空即关闭 Awsl-RemoteX 认证 |
-| `CREDENTIAL_KEY` | 无 | 使用 AES-256-GCM 加密资产凭据的 64 位随机十六进制密钥 |
-| `GUACAMOLE_JSON_SECRET` | 空 | Guacamole JSON 认证使用的 32 位随机十六进制密钥 |
-| `GUACAMOLE_UPSTREAM` | 空 | Guacamole Web 服务地址；Compose 中为 `http://guacamole:8080` |
-| `GUACAMOLE_PUBLIC_PATH` | `/guacamole` | 浏览器访问 Guacamole 的同源路径 |
-| `GUACAMOLE_SESSION_TIMEOUT_MINUTES` | `1440` | Guacamole 认证会话允许空闲的分钟数；不限制正在传输的远程连接时长 |
+  guacd:
+    image: guacamole/guacd:1.6.0
+    restart: unless-stopped
 
-生成密钥后即可启动完整协议栈：
-
-```bash
-cp .env.example .env
-# GUACAMOLE_JSON_SECRET 使用：openssl rand -hex 16
-# CREDENTIAL_KEY 使用：openssl rand -hex 32
-docker compose up --build
+  guacamole:
+    image: guacamole/guacamole:1.6.0
+    environment:
+      GUACD_HOSTNAME: guacd
+      JSON_ENABLED: "true"
+      JSON_SECRET_KEY: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
+      API_SESSION_TIMEOUT: ${GUACAMOLE_SESSION_TIMEOUT_MINUTES:-1440}
+    depends_on:
+      - guacd
+    restart: unless-stopped
 ```
 
-## 发布镜像
-
-普通分支 Push 不会构建或发布镜像。推送 `v*` 格式的 Git Tag 后，GitHub Actions 会发布 `linux/amd64` 和 `linux/arm64` 镜像：
+Start the service and open `http://localhost:8080`:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+docker compose up -d --build
 ```
 
-镜像地址：`ghcr.io/dreamhunter2333/awsl-remotex`。
+## Credentials and security
+
+- Assets can store a password or SSH private key, or keep no saved credential.
+- Saved credentials are encrypted with AES-256-GCM before being written to SQLite.
+- Asset lists and API responses never return saved passwords or private keys.
+- Connection tests only verify TCP reachability. They do not validate credentials or complete a remote login.
+- `.env`, SQLite databases, and runtime data are excluded from Git by default.
+
+## Scope
+
+Awsl RemoteX focuses on remote control. It does not provide session recording, playback, command auditing, approval workflows, or internal web proxying.

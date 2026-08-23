@@ -1,7 +1,6 @@
 .git
 .env
 data
-web/dist
 web/node_modules
 *.db
 *.log
