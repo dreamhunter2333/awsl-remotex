@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+.vscode/
+.env
+
+data/
+dist/
+web/dist/
+web/node_modules/
+node_modules/
+*.tsbuildinfo
+
+*.log
+*.db
+*.db-shm
+*.db-wal

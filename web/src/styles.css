@@ -1,0 +1,111 @@
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/jetbrains-mono";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope Variable", sans-serif;
+  --font-mono: "JetBrains Mono Variable", monospace;
+}
+
+:root {
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #282c34;
+  --panel: #21252b;
+  --surface: #2c313a;
+  --surface-hover: #353b45;
+  --input: #1f2329;
+  --canvas: #1f2329;
+  --foreground: #dcdfe4;
+  --muted: #9ba3b0;
+  --subtle: #687281;
+  --border: rgb(220 223 228 / 10%);
+  --border-strong: rgb(220 223 228 / 18%);
+  --accent: #61afef;
+  --accent-hover: #78b9f2;
+  --accent-foreground: #18212a;
+  --accent-soft: rgb(97 175 239 / 13%);
+  --danger: #e06c75;
+  --danger-soft: rgb(224 108 117 / 13%);
+  --green: #98c379;
+  --green-soft: rgb(152 195 121 / 12%);
+  --purple: #c678dd;
+  --purple-soft: rgb(198 120 221 / 12%);
+  --grid: rgb(220 223 228 / 65%);
+  --shadow: rgb(0 0 0 / 45%);
+  --backdrop: rgb(16 18 22 / 70%);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #fafafa;
+  --panel: #f3f3f4;
+  --surface: #ffffff;
+  --surface-hover: #eceef0;
+  --input: #ffffff;
+  --canvas: #f7f7f8;
+  --foreground: #383a42;
+  --muted: #6f737d;
+  --subtle: #9a9da5;
+  --border: rgb(56 58 66 / 11%);
+  --border-strong: rgb(56 58 66 / 19%);
+  --accent: #0184bc;
+  --accent-hover: #0075aa;
+  --accent-foreground: #ffffff;
+  --accent-soft: rgb(1 132 188 / 11%);
+  --danger: #e45649;
+  --danger-soft: rgb(228 86 73 / 10%);
+  --green: #50a14f;
+  --green-soft: rgb(80 161 79 / 10%);
+  --purple: #a626a4;
+  --purple-soft: rgb(166 38 164 / 9%);
+  --grid: rgb(56 58 66 / 42%);
+  --shadow: rgb(56 58 66 / 20%);
+  --backdrop: rgb(56 58 66 / 38%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+dialog::backdrop {
+  background: var(--backdrop);
+  backdrop-filter: blur(8px);
+}
+
+::selection {
+  color: var(--accent-foreground);
+  background: var(--accent);
+}

@@ -1,0 +1,194 @@
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+
+const messages = {
+  "zh-CN": {
+    language: "语言",
+    theme: "主题",
+    followSystem: "跟随系统",
+    dark: "深色",
+    light: "浅色",
+    filterConnections: "筛选连接…",
+    doubleClickConnect: "双击连接",
+    expandSidebar: "展开侧边栏",
+    collapseSidebar: "收起侧边栏",
+    loadingAssets: "正在读取资产…",
+    noAssets: "暂无资产",
+    addAsset: "添加资产",
+    closeSession: "关闭 {name}",
+    remoteSession: "{name} 远程会话",
+    reconnect: "重新连接",
+    fullscreen: "全屏",
+    exitFullscreen: "退出全屏",
+    disconnect: "断开连接",
+    sessionActions: "会话操作",
+    connectionFailed: "连接失败",
+    addAssetFailed: "添加资产失败",
+    addRemoteAsset: "添加远程资产",
+    close: "关闭",
+    name: "名称",
+    group: "分组",
+    groupPlaceholder: "生产环境",
+    protocol: "协议",
+    host: "主机",
+    port: "端口",
+    username: "用户名",
+    cancel: "取消",
+    adding: "正在添加…",
+    defaultGroup: "默认分组",
+    checkingAuthentication: "正在检查认证…",
+    password: "全局密码",
+    passwordPlaceholder: "输入 AUTH_PASSWORD",
+    signIn: "登录",
+    signingIn: "正在登录…",
+    signInDescription: "输入环境变量中配置的全局密码。",
+    invalidPassword: "密码错误",
+    logout: "退出登录",
+    testConnection: "测试连接",
+    testingConnection: "正在测试…",
+    connectionReachable: "端口可达，延迟 {latency} ms",
+    connectionUnreachable: "端口不可达：{message}",
+    editAsset: "编辑资产",
+    saveChanges: "保存修改",
+    saving: "正在保存…",
+    deleteAsset: "删除连接",
+    confirmDelete: "确定删除连接“{name}”吗？此操作无法撤销。",
+    authentication: "认证方式",
+    noSavedCredential: "不保存凭据",
+    passwordCredential: "保存密码",
+    connectionPassword: "连接密码",
+    privateKeyCredential: "SSH 私钥",
+    passwordHint: "留空则保留现有密码",
+    privateKey: "私钥",
+    privateKeyPlaceholder: "粘贴 OpenSSH 私钥",
+    privateKeyHint: "粘贴 OpenSSH 私钥；留空则保留现有私钥",
+    passphrase: "私钥口令",
+  },
+  en: {
+    language: "Language",
+    theme: "Theme",
+    followSystem: "System",
+    dark: "Dark",
+    light: "Light",
+    filterConnections: "Filter connections…",
+    doubleClickConnect: "Double-click to connect",
+    expandSidebar: "Expand sidebar",
+    collapseSidebar: "Collapse sidebar",
+    loadingAssets: "Loading assets…",
+    noAssets: "No assets yet",
+    addAsset: "Add asset",
+    closeSession: "Close {name}",
+    remoteSession: "{name} remote session",
+    reconnect: "Reconnect",
+    fullscreen: "Fullscreen",
+    exitFullscreen: "Exit fullscreen",
+    disconnect: "Disconnect",
+    sessionActions: "Session actions",
+    connectionFailed: "Connection failed",
+    addAssetFailed: "Failed to add asset",
+    addRemoteAsset: "Add remote asset",
+    close: "Close",
+    name: "Name",
+    group: "Group",
+    groupPlaceholder: "Production",
+    protocol: "Protocol",
+    host: "Host",
+    port: "Port",
+    username: "Username",
+    cancel: "Cancel",
+    adding: "Adding…",
+    defaultGroup: "Default",
+    checkingAuthentication: "Checking authentication…",
+    password: "Global password",
+    passwordPlaceholder: "Enter AUTH_PASSWORD",
+    signIn: "Sign in",
+    signingIn: "Signing in…",
+    signInDescription: "Enter the global password configured through the environment.",
+    invalidPassword: "Incorrect password",
+    logout: "Sign out",
+    testConnection: "Test connection",
+    testingConnection: "Testing…",
+    connectionReachable: "Port reachable in {latency} ms",
+    connectionUnreachable: "Port unreachable: {message}",
+    editAsset: "Edit asset",
+    saveChanges: "Save changes",
+    saving: "Saving…",
+    deleteAsset: "Delete connection",
+    confirmDelete: "Delete connection “{name}”? This cannot be undone.",
+    authentication: "Authentication",
+    noSavedCredential: "Do not save",
+    passwordCredential: "Saved password",
+    connectionPassword: "Connection password",
+    privateKeyCredential: "SSH private key",
+    passwordHint: "Leave blank to keep the saved password",
+    privateKey: "Private key",
+    privateKeyPlaceholder: "Paste an OpenSSH private key",
+    privateKeyHint: "Paste an OpenSSH private key; leave blank to keep the saved key",
+    passphrase: "Key passphrase",
+  },
+} as const
+
+export type Locale = keyof typeof messages
+export type ThemeMode = "system" | "dark" | "light"
+type MessageKey = keyof (typeof messages)["zh-CN"]
+type Values = Record<string, string | number>
+
+interface PreferencesContextValue {
+  locale: Locale
+  setLocale: (locale: Locale) => void
+  theme: ThemeMode
+  setTheme: (theme: ThemeMode) => void
+  t: (key: MessageKey, values?: Values) => string
+}
+
+const PreferencesContext = createContext<PreferencesContextValue | null>(null)
+
+export function PreferencesProvider({ children }: { children: ReactNode }) {
+  const [locale, setLocale] = useState<Locale>(() => {
+    const stored = localStorage.getItem("awsl-remotex.locale")
+    if (stored === "zh-CN" || stored === "en") return stored
+    return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en"
+  })
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem("awsl-remotex.theme")
+    if (stored === "dark" || stored === "light" || stored === "system") return stored
+    return "system"
+  })
+
+  useEffect(() => {
+    localStorage.setItem("awsl-remotex.locale", locale)
+    document.documentElement.lang = locale
+  }, [locale])
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)")
+    const applyTheme = () => {
+      document.documentElement.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme
+    }
+    localStorage.setItem("awsl-remotex.theme", theme)
+    applyTheme()
+    media.addEventListener("change", applyTheme)
+    return () => media.removeEventListener("change", applyTheme)
+  }, [theme])
+
+  const value = useMemo<PreferencesContextValue>(() => ({
+    locale,
+    setLocale,
+    theme,
+    setTheme,
+    t: (key, values) => {
+      let message: string = messages[locale][key]
+      for (const [name, replacement] of Object.entries(values ?? {})) {
+        message = message.replaceAll(`{${name}}`, String(replacement))
+      }
+      return message
+    },
+  }), [locale, theme])
+
+  return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>
+}
+
+export function usePreferences() {
+  const value = useContext(PreferencesContext)
+  if (!value) throw new Error("usePreferences must be used within PreferencesProvider")
+  return value
+}

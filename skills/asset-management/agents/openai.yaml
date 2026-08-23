@@ -1,0 +1,3 @@
+interface:
+  display_name: "Awsl-RemoteX 资产管理"
+  short_description: "增删改查远程资产并测试端口可达性"
