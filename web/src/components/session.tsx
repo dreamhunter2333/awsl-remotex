@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
 import { LoaderCircle, Maximize2, Minimize2, Power, RefreshCw, Settings2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -6,7 +6,11 @@ import type { Asset } from "@/lib/api"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
-export function SessionViewport({ active, asset, connectionURL, connectionError, connecting, onReconnect, onSessionEnded }: {
+export interface SessionHandle {
+  disconnect: () => Promise<void>
+}
+
+export const SessionViewport = forwardRef<SessionHandle, {
   active: boolean
   asset: Asset
   connectionURL?: string
@@ -14,15 +18,32 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
   connecting: boolean
   onReconnect: () => void
   onSessionEnded: () => void
-}) {
+  onReady: () => void
+  onActivity: () => void
+}>(function SessionViewport({ active, asset, connectionURL, connectionError, connecting, onReconnect, onSessionEnded, onReady, onActivity }, ref) {
   const { t } = usePreferences()
   const [frameReady, setFrameReady] = useState(false)
   const viewportRef = useRef<HTMLElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const onSessionEndedRef = useRef(onSessionEnded)
+  const onReadyRef = useRef(onReady)
+  const onActivityRef = useRef(onActivity)
   const activeRef = useRef(active)
+  const tokenRef = useRef("")
 
   useEffect(() => { onSessionEndedRef.current = onSessionEnded }, [onSessionEnded])
+  useEffect(() => { onReadyRef.current = onReady }, [onReady])
+  useEffect(() => { onActivityRef.current = onActivity }, [onActivity])
+
+  useImperativeHandle(ref, () => ({
+    disconnect: async () => {
+      const token = tokenRef.current
+      if (!token) return
+      tokenRef.current = ""
+      const encoded = encodeURIComponent(token)
+      await fetch(`/guacamole/api/tokens/${encoded}?token=${encoded}`, { method: "DELETE", keepalive: true }).catch(() => undefined)
+    },
+  }), [])
   useEffect(() => {
     activeRef.current = active
     if (!active || !frameReady) return
@@ -39,9 +60,13 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
     if (!iframe || !viewport) return
 
     let sawClientRoute = false
+    let sawConnectedView = false
     let resizeFrame = 0
     let focusTimer = 0
-    const startedAt = Date.now()
+    let routeTimer = 0
+    let mutationObserver: MutationObserver | undefined
+    const activityEvents = ["pointerdown", "keydown", "touchstart", "wheel"] as const
+    const reportActivity = () => onActivityRef.current()
 
     const focusFrame = () => {
       if (!activeRef.current || document.querySelector("dialog[open]")) return
@@ -56,12 +81,31 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
         const hash = iframe.contentWindow?.location.hash ?? ""
         if (hash.startsWith("#/client/")) {
           sawClientRoute = true
-          setFrameReady(true)
-          window.requestAnimationFrame(focusFrame)
+          tokenRef.current = readGuacamoleToken(iframe.contentWindow?.localStorage.getItem("GUAC_AUTH_TOKEN"))
           return
         }
         setFrameReady(false)
-        if (sawClientRoute || Date.now() - startedAt > 8_000) onSessionEndedRef.current()
+        if (sawClientRoute) onSessionEndedRef.current()
+      } catch {
+        setFrameReady(true)
+      }
+    }
+
+    const inspectStatus = () => {
+      try {
+        const document = iframe.contentDocument
+        const status = document?.querySelector(".client-status-modal")
+        if (!document?.querySelector(".client-main") || !status) return
+        if (!status.classList.contains("shown")) {
+          if (sawConnectedView) return
+          sawConnectedView = true
+          setFrameReady(true)
+          tokenRef.current = readGuacamoleToken(iframe.contentWindow?.localStorage.getItem("GUAC_AUTH_TOKEN"))
+          onReadyRef.current()
+          window.requestAnimationFrame(focusFrame)
+          return
+        }
+        if (sawConnectedView) onSessionEndedRef.current()
       } catch {
         setFrameReady(true)
       }
@@ -83,10 +127,17 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
     const attachFrameListeners = () => {
       try {
         iframe.contentWindow?.addEventListener("hashchange", inspectRoute)
+        activityEvents.forEach((name) => iframe.contentWindow?.addEventListener(name, reportActivity, { capture: true }))
+        mutationObserver?.disconnect()
+        mutationObserver = new MutationObserver(inspectStatus)
+        if (iframe.contentDocument?.documentElement) {
+          mutationObserver.observe(iframe.contentDocument.documentElement, { attributes: true, childList: true, subtree: true })
+        }
       } catch {
         return
       }
       inspectRoute()
+      inspectStatus()
       notifyResize()
     }
 
@@ -94,7 +145,9 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
     window.addEventListener("focus", focusFrame)
     const resizeObserver = new ResizeObserver(notifyResize)
     resizeObserver.observe(viewport)
-    const routePoll = window.setInterval(inspectRoute, 250)
+    routeTimer = window.setTimeout(() => {
+      if (!sawConnectedView) onSessionEndedRef.current()
+    }, 15_000)
     attachFrameListeners()
 
     return () => {
@@ -102,11 +155,13 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
       window.removeEventListener("focus", focusFrame)
       try {
         iframe.contentWindow?.removeEventListener("hashchange", inspectRoute)
+        activityEvents.forEach((name) => iframe.contentWindow?.removeEventListener(name, reportActivity, { capture: true }))
       } catch {
         // The frame may have navigated away before cleanup.
       }
       resizeObserver.disconnect()
-      window.clearInterval(routePoll)
+      mutationObserver?.disconnect()
+      window.clearTimeout(routeTimer)
       window.cancelAnimationFrame(resizeFrame)
       window.clearTimeout(focusTimer)
     }
@@ -133,13 +188,23 @@ export function SessionViewport({ active, asset, connectionURL, connectionError,
       {connecting || !connectionError ? (
         <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />
       ) : (
-        <div className="flex items-center gap-2 text-xs text-[var(--danger)]">
-          <span>{connectionError}</span>
-          <Button variant="ghost" size="icon" onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-3.5" /></Button>
+        <div role="alertdialog" aria-modal="false" className="flex items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2.5 shadow-lg">
+          <span className="max-w-80 text-xs text-[var(--muted)]">{connectionError}</span>
+          <Button variant="outline" size="sm" onClick={onReconnect}><RefreshCw className="size-3.5" />{t("reconnect")}</Button>
         </div>
       )}
     </section>
   )
+})
+
+function readGuacamoleToken(value: string | null | undefined) {
+  if (!value) return ""
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return typeof parsed === "string" ? parsed : value
+  } catch {
+    return value
+  }
 }
 
 export function SessionActions({ active, fullscreen, onReconnect, onFullscreen, onDisconnect }: {

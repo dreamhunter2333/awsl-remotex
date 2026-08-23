@@ -17,6 +17,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
 }) {
   const { t } = usePreferences()
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const [protocol, setProtocol] = useState<Protocol>(asset?.protocol ?? "ssh")
   const [credentialType, setCredentialType] = useState<CredentialType>(asset?.credentialType ?? "prompt")
   const [submitting, setSubmitting] = useState(false)
@@ -35,20 +36,8 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
     event.preventDefault()
     setSubmitting(true)
     setError("")
-    const values = new FormData(event.currentTarget)
     try {
-      await onSubmit({
-        name: String(values.get("name") || ""),
-        group: String(values.get("group") || ""),
-        protocol,
-        host: String(values.get("host") || ""),
-        port: Number(values.get("port") || defaultPort(protocol)),
-        username: String(values.get("username") || ""),
-        credentialType,
-        password: String(values.get("password") || ""),
-        privateKey: String(values.get("privateKey") || ""),
-        passphrase: String(values.get("passphrase") || ""),
-      })
+      await onSubmit(readInput(event.currentTarget, protocol, credentialType))
       event.currentTarget.reset()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("addAssetFailed"))
@@ -58,11 +47,12 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   }
 
   const testConnection = async () => {
-    if (!asset) return
+    const form = formRef.current
+    if (!form?.reportValidity()) return
     setTesting(true)
     setTestResult(undefined)
     try {
-      setTestResult(await api.testAsset(asset.id))
+      setTestResult(await api.testAsset(readInput(form, protocol, credentialType), asset?.id))
     } catch (reason) {
       setTestResult({ reachable: false, latencyMs: 0, message: reason instanceof Error ? reason.message : t("connectionFailed") })
     } finally {
@@ -79,9 +69,13 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
     ? ["prompt", "password", "private-key"]
     : ["prompt", "password"]
 
+  const hasMatchingCredential = Boolean(
+    asset?.credentialConfigured && asset.protocol === protocol && asset.credentialType === credentialType,
+  )
+
   return (
     <dialog ref={dialogRef} onClose={onClose} className="m-auto w-[min(460px,calc(100%-2rem))] rounded-2xl border border-[var(--border-strong)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[0_24px_80px_var(--shadow)] backdrop:bg-[var(--backdrop)]">
-      <form onSubmit={handleSubmit} className="p-5">
+      <form ref={formRef} onSubmit={handleSubmit} className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <h2 className="text-base font-semibold">{asset ? t("editAsset") : t("addRemoteAsset")}</h2>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label={t("close")}><X className="size-4" /></Button>
@@ -115,11 +109,11 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
             </div>
           </fieldset>
           {credentialType === "password" && (
-            <label className="block space-y-1.5"><span className="text-xs text-[var(--muted)]">{t("connectionPassword")}</span><Input name="password" type="password" autoComplete="new-password" required={!asset?.credentialConfigured} placeholder={asset?.credentialConfigured ? t("passwordHint") : t("connectionPassword")} /></label>
+            <label className="block space-y-1.5"><span className="text-xs text-[var(--muted)]">{t("connectionPassword")}</span><Input name="password" type="password" autoComplete="new-password" required={!hasMatchingCredential} placeholder={hasMatchingCredential ? t("passwordHint") : t("connectionPassword")} /></label>
           )}
           {credentialType === "private-key" && (
             <>
-              <label className="block space-y-1.5"><span className="text-xs text-[var(--muted)]">{t("privateKey")}</span><textarea name="privateKey" required={!asset?.credentialConfigured} placeholder={asset?.credentialConfigured ? t("privateKeyHint") : t("privateKeyPlaceholder")} className="h-24 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--input)] px-3 py-2 font-mono text-xs text-[var(--foreground)] shadow-sm outline-none transition placeholder:text-[var(--subtle)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]" /></label>
+              <label className="block space-y-1.5"><span className="text-xs text-[var(--muted)]">{t("privateKey")}</span><textarea name="privateKey" required={!hasMatchingCredential} placeholder={hasMatchingCredential ? t("privateKeyHint") : t("privateKeyPlaceholder")} className="h-24 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--input)] px-3 py-2 font-mono text-xs text-[var(--foreground)] shadow-sm outline-none transition placeholder:text-[var(--subtle)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]" /></label>
               <label className="block space-y-1.5"><span className="text-xs text-[var(--muted)]">{t("passphrase")}</span><Input name="passphrase" type="password" autoComplete="new-password" /></label>
             </>
           )}
@@ -127,9 +121,9 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
           {testResult && <p role="status" className={cn("text-xs", testResult.reachable ? "text-[var(--green)]" : "text-[var(--danger)]")}>{testResult.reachable ? t("connectionReachable", { latency: testResult.latencyMs }) : t("connectionUnreachable", { message: testResult.message })}</p>}
         </div>
         <div className="mt-5 flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={testing} onClick={testConnection}><Activity className="size-3.5" />{testing ? t("testingConnection") : t("testConnection")}</Button>
           {asset && (
             <>
-              <Button type="button" variant="outline" size="sm" disabled={testing} onClick={testConnection}><Activity className="size-3.5" />{testing ? t("testingConnection") : t("testConnection")}</Button>
               <Button type="button" variant="danger" size="sm" onClick={async () => { if (window.confirm(t("confirmDelete", { name: asset.name }))) await onDelete(asset) }}><Trash2 className="size-3.5" />{t("deleteAsset")}</Button>
             </>
           )}
@@ -141,4 +135,20 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
       </form>
     </dialog>
   )
+}
+
+function readInput(form: HTMLFormElement, protocol: Protocol, credentialType: CredentialType): AssetInput {
+  const values = new FormData(form)
+  return {
+    name: String(values.get("name") || ""),
+    group: String(values.get("group") || ""),
+    protocol,
+    host: String(values.get("host") || ""),
+    port: Number(values.get("port") || defaultPort(protocol)),
+    username: String(values.get("username") || ""),
+    credentialType,
+    password: String(values.get("password") || ""),
+    privateKey: String(values.get("privateKey") || ""),
+    passphrase: String(values.get("passphrase") || ""),
+  }
 }

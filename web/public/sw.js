@@ -1,9 +1,12 @@
-const CACHE = "awsl-remotex-shell-v1"
+const CACHE = "awsl-remotex-shell-v2"
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"]
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)))
-  self.skipWaiting()
+})
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting()
 })
 
 self.addEventListener("activate", (event) => {
@@ -25,10 +28,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+    fetch(request).then((response) => {
       const copy = response.clone()
       caches.open(CACHE).then((cache) => cache.put(request, copy))
       return response
-    })),
+    }).catch(() => caches.match(request)),
   )
 })

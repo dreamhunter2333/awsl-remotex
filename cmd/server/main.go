@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dreamhunter2333/awsl-remotex/internal/assets"
+	"github.com/dreamhunter2333/awsl-remotex/internal/config"
 	"github.com/dreamhunter2333/awsl-remotex/internal/credential"
 	"github.com/dreamhunter2333/awsl-remotex/internal/database"
 	"github.com/dreamhunter2333/awsl-remotex/internal/guacamole"
@@ -18,12 +20,16 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	settings, err := config.Load()
+	if err != nil {
+		logger.Error("load configuration", "error", err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	var vault *credential.Vault
-	var err error
-	if secret := os.Getenv("CREDENTIAL_KEY"); secret != "" {
+	if secret := settings.CredentialKey; secret != "" {
 		vault, err = credential.New(secret)
 		if err != nil {
 			logger.Error("configure credential vault", "error", err)
@@ -31,7 +37,7 @@ func main() {
 		}
 	}
 
-	store, err := database.Open(ctx, env("DATABASE_PATH", "data/awsl-remotex.db"), vault)
+	store, err := database.Open(ctx, settings.DatabasePath, vault)
 	if err != nil {
 		logger.Error("open database", "error", err)
 		os.Exit(1)
@@ -39,18 +45,22 @@ func main() {
 	defer store.Close()
 
 	var guacamoleAuth *guacamole.Authenticator
-	if secret := os.Getenv("GUACAMOLE_JSON_SECRET"); secret != "" {
-		guacamoleAuth, err = guacamole.New(secret, env("GUACAMOLE_PUBLIC_PATH", "/guacamole"))
+	if secret := settings.GuacamoleJSONSecret; secret != "" {
+		guacamoleAuth, err = guacamole.New(secret, settings.GuacamolePublicPath)
 		if err != nil {
 			logger.Error("configure guacamole", "error", err)
 			os.Exit(1)
 		}
 	}
+	guacdTester := guacamole.NewTester(settings.GuacdAddress, 5*time.Second)
+	assetService := assets.NewService(store, guacamoleAuth, guacdTester)
 	handler, err := httpapi.New(store, logger, httpapi.Config{
-		WebDir:                 env("WEB_DIR", "web/dist"),
-		GuacamoleUpstream:      os.Getenv("GUACAMOLE_UPSTREAM"),
-		GuacamoleAuthenticator: guacamoleAuth,
-		AuthPassword:           os.Getenv("AUTH_PASSWORD"),
+		WebDir:             settings.WebDirectory,
+		GuacamoleUpstream:  settings.GuacamoleUpstream,
+		AssetService:       assetService,
+		GuacdTester:        guacdTester,
+		AuthPassword:       settings.AuthPassword,
+		SessionIdleTimeout: settings.SessionIdleTimeout,
 	})
 	if err != nil {
 		logger.Error("configure server", "error", err)
@@ -58,7 +68,7 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:              env("ADDR", ":8080"),
+		Addr:              settings.Address,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       90 * time.Second,
@@ -78,11 +88,4 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown", "error", err)
 	}
-}
-
-func env(name, fallback string) string {
-	if value := os.Getenv(name); value != "" {
-		return value
-	}
-	return fallback
 }

@@ -12,6 +12,8 @@ services:
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY to 64 hexadecimal characters}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET to 32 hexadecimal characters}
       GUACAMOLE_UPSTREAM: http://guacamole:8080
+      GUACD_ADDRESS: guacd:4822
+      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-24h}
     depends_on:
       - guacamole
     restart: unless-stopped

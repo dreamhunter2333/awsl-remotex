@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dreamhunter2333/awsl-remotex/internal/assets"
 	"github.com/dreamhunter2333/awsl-remotex/internal/credential"
-	"github.com/dreamhunter2333/awsl-remotex/internal/database"
 )
 
 type Authenticator struct {
@@ -52,34 +52,9 @@ func New(secret, basePath string) (*Authenticator, error) {
 	return &Authenticator{key: key, basePath: strings.TrimRight(basePath, "/")}, nil
 }
 
-func (auth *Authenticator) ConnectionURL(asset database.Asset, credential credential.Value, theme string) (string, time.Time, error) {
+func (auth *Authenticator) ConnectionURL(asset assets.Asset, credential credential.Value, theme string) (string, time.Time, error) {
 	expires := time.Now().Add(30 * time.Second)
-	parameters := map[string]string{
-		"hostname": asset.Host,
-		"port":     strconv.Itoa(asset.Port),
-		"username": asset.Username,
-	}
-	if asset.Protocol == "rdp" {
-		parameters["ignore-cert"] = "true"
-		parameters["resize-method"] = "display-update"
-	}
-	if asset.Protocol == "ssh" {
-		parameters["font-name"] = "DejaVu Sans Mono"
-		parameters["font-size"] = "11"
-		parameters["color-scheme"] = oneHalfDark
-		if theme == "light" {
-			parameters["color-scheme"] = oneHalfLight
-		}
-	}
-	if credential.Password != "" {
-		parameters["password"] = credential.Password
-	}
-	if credential.PrivateKey != "" {
-		parameters["private-key"] = credential.PrivateKey
-	}
-	if credential.Passphrase != "" {
-		parameters["passphrase"] = credential.Passphrase
-	}
+	parameters := ConnectionParameters(asset, credential, theme)
 
 	plain, err := json.Marshal(payload{
 		Username: "awsl-remotex",
@@ -109,6 +84,36 @@ func (auth *Authenticator) ConnectionURL(asset database.Asset, credential creden
 	cipher.NewCBCEncrypter(block, make([]byte, aes.BlockSize)).CryptBlocks(encrypted, signed)
 	token := base64.StdEncoding.EncodeToString(encrypted)
 	return auth.basePath + "/?data=" + url.QueryEscape(token), expires, nil
+}
+
+func ConnectionParameters(asset assets.Asset, credential credential.Value, theme string) map[string]string {
+	parameters := map[string]string{
+		"hostname": asset.Host,
+		"port":     strconv.Itoa(asset.Port),
+		"username": asset.Username,
+	}
+	if asset.Protocol == "rdp" {
+		parameters["ignore-cert"] = "true"
+		parameters["resize-method"] = "display-update"
+	}
+	if asset.Protocol == "ssh" {
+		parameters["font-name"] = "DejaVu Sans Mono"
+		parameters["font-size"] = "11"
+		parameters["color-scheme"] = oneHalfDark
+		if theme == "light" {
+			parameters["color-scheme"] = oneHalfLight
+		}
+	}
+	if credential.Password != "" {
+		parameters["password"] = credential.Password
+	}
+	if credential.PrivateKey != "" {
+		parameters["private-key"] = credential.PrivateKey
+	}
+	if credential.Passphrase != "" {
+		parameters["passphrase"] = credential.Passphrase
+	}
+	return parameters
 }
 
 func pad(value []byte, blockSize int) []byte {

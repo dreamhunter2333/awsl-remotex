@@ -36,6 +36,7 @@ export interface ConnectionTicket {
 export interface AuthStatus {
   required: boolean
   authenticated: boolean
+  sessionIdleSeconds: number
 }
 
 export interface ConnectionTest {
@@ -71,7 +72,7 @@ export const api = {
     request<Asset>(`/api/assets/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   connectAsset: (id: string, theme: "dark" | "light") =>
     request<ConnectionTicket>(`/api/assets/${id}/connect?theme=${theme}`, { method: "POST" }),
-  testAsset: (id: string) =>
-    request<ConnectionTest>(`/api/assets/${id}/test`, { method: "POST" }),
+  testAsset: (asset: AssetInput, assetId?: string) =>
+    request<ConnectionTest>("/api/assets/test", { method: "POST", body: JSON.stringify({ assetId, asset }) }),
   deleteAsset: (id: string) => request<void>(`/api/assets/${id}`, { method: "DELETE" }),
 }

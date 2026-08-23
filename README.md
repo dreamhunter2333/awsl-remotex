@@ -9,7 +9,7 @@ Awsl RemoteX is a lightweight, modern browser-based remote workspace for managin
 - SSH, RDP, and VNC remote connections
 - Multiple connection tabs with fast session switching
 - Single-click selection and double-click connection
-- Create, edit, delete, and test asset reachability
+- Create, edit, delete, and test remote connections
 - Encrypted passwords and SSH private keys with automatic login
 - Fully hideable asset sidebar
 - Reconnect, disconnect, and fullscreen controls
@@ -36,6 +36,7 @@ GUACAMOLE_JSON_SECRET=<output of openssl rand -hex 16>
 CREDENTIAL_KEY=<output of openssl rand -hex 32>
 AUTH_PASSWORD=
 GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
+SESSION_IDLE_TIMEOUT=24h
 ```
 
 `AUTH_PASSWORD` is optional. Set it and use HTTPS when exposing the service publicly.
@@ -55,6 +56,8 @@ services:
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
       GUACAMOLE_UPSTREAM: http://guacamole:8080
+      GUACD_ADDRESS: guacd:4822
+      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-24h}
     depends_on:
       - guacamole
     restart: unless-stopped
@@ -86,7 +89,7 @@ docker compose up -d --build
 - Assets can store a password or SSH private key, or keep no saved credential.
 - Saved credentials are encrypted with AES-256-GCM before being written to SQLite.
 - Asset lists and API responses never return saved passwords or private keys.
-- Connection tests only verify TCP reachability. They do not validate credentials or complete a remote login.
+- Connection tests ask `guacd` to establish a real SSH, RDP, or VNC connection with the current form values.
 - `.env`, SQLite databases, and runtime data are excluded from Git by default.
 
 ## Scope

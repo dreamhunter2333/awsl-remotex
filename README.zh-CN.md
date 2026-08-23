@@ -9,7 +9,7 @@ Awsl RemoteX 是一个轻量、现代的浏览器远程控制工作台，用于�
 - SSH、RDP 和 VNC 远程连接
 - 多连接 Tab，可在多个会话之间快速切换
 - 单击选中资产，双击直接连接
-- 添加、编辑、删除资产及端口连通测试
+- 添加、编辑、删除资产及远程连接测试
 - 密码与 SSH 私钥加密存储，可自动登录远程主机
 - 可完全隐藏的资产侧边栏
 - 会话重连、断开和全屏控制
@@ -36,6 +36,7 @@ GUACAMOLE_JSON_SECRET=<openssl rand -hex 16 的输出>
 CREDENTIAL_KEY=<openssl rand -hex 32 的输出>
 AUTH_PASSWORD=
 GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
+SESSION_IDLE_TIMEOUT=24h
 ```
 
 `AUTH_PASSWORD` 可以留空。对外提供服务时，建议设置密码并使用 HTTPS。
@@ -55,6 +56,8 @@ services:
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
       GUACAMOLE_UPSTREAM: http://guacamole:8080
+      GUACD_ADDRESS: guacd:4822
+      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-24h}
     depends_on:
       - guacamole
     restart: unless-stopped
@@ -86,7 +89,7 @@ docker compose up -d --build
 - 资产可以保存密码或 SSH 私钥，也可以选择不保存凭据。
 - 保存的资产凭据使用 AES-256-GCM 加密后写入 SQLite。
 - 资产列表和 API 不会返回已保存的密码或私钥。
-- 端口测试只检查目标地址是否可达，不验证用户名、密码或远程登录结果。
+- 连接测试会使用当前表单中的信息，通过 `guacd` 实际尝试 SSH、RDP 或 VNC 连接。
 - `.env`、SQLite 数据库和运行数据默认不会提交到 Git。
 
 ## 项目边界

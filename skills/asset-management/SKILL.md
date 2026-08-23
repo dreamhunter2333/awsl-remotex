@@ -1,6 +1,6 @@
 ---
 name: asset-management
-description: Manage Awsl-RemoteX assets through its HTTP API, including listing, creating, updating, deleting, and testing SSH, RDP, or VNC endpoint reachability. Use when operating assets in a running Awsl-RemoteX instance; do not use for direct SQLite edits.
+description: Manage Awsl-RemoteX assets through its HTTP API, including listing, creating, updating, deleting, and testing SSH, RDP, or VNC connections. Use when operating assets in a running Awsl-RemoteX instance; do not use for direct SQLite edits.
 ---
 
 # Awsl-RemoteX Asset Management
@@ -37,8 +37,9 @@ Assets use this complete writable shape:
 - Read one: list assets and select the exact `id`; there is no separate public single-asset endpoint
 - Update: `PUT /api/assets/{id}` with the complete writable shape; this is full replacement, not a partial patch
 - Delete: `DELETE /api/assets/{id}` only after resolving and reporting the exact asset target
-- Test reachability: `POST /api/assets/{id}/test`
+- Test a saved asset: `POST /api/assets/{id}/test`
+- Test current form values: `POST /api/assets/test` with `{"assetId":"<optional existing ID>","asset":{...}}`
 
-The test response contains `reachable`, `latencyMs`, and `message`. It tests TCP reachability of the configured host and port with a five-second timeout. It does not validate a remote username, password, private key, desktop login, or Guacamole rendering. State that distinction when reporting results.
+The test response contains `reachable`, `latencyMs`, and `message`. The server first checks target TCP reachability, then asks `guacd` to establish the configured protocol connection with the supplied or saved credentials. It does not open or validate the browser rendering path.
 
 Treat 401 as missing or expired Awsl-RemoteX authentication, 404 as a stale asset ID, and other non-success responses as operation failures. Do not retry mutations automatically after an ambiguous network failure; list assets first to determine whether the change was applied.

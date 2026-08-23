@@ -22,6 +22,10 @@ const messages = {
     disconnect: "断开连接",
     sessionActions: "会话操作",
     connectionFailed: "连接失败",
+    sessionEnded: "连接已断开，请重新连接",
+    idleSessionClosed: "“{name}”长时间未使用，已自动断开",
+    updateAvailable: "新版本已就绪",
+    updateNow: "立即更新",
     addAssetFailed: "添加资产失败",
     addRemoteAsset: "添加远程资产",
     close: "关闭",
@@ -45,8 +49,8 @@ const messages = {
     logout: "退出登录",
     testConnection: "测试连接",
     testingConnection: "正在测试…",
-    connectionReachable: "端口可达，延迟 {latency} ms",
-    connectionUnreachable: "端口不可达：{message}",
+    connectionReachable: "连接成功，耗时 {latency} ms",
+    connectionUnreachable: "连接失败：{message}",
     editAsset: "编辑资产",
     saveChanges: "保存修改",
     saving: "正在保存…",
@@ -84,6 +88,10 @@ const messages = {
     disconnect: "Disconnect",
     sessionActions: "Session actions",
     connectionFailed: "Connection failed",
+    sessionEnded: "Connection ended. Reconnect to continue",
+    idleSessionClosed: "“{name}” was disconnected after being idle",
+    updateAvailable: "An update is ready",
+    updateNow: "Update now",
     addAssetFailed: "Failed to add asset",
     addRemoteAsset: "Add remote asset",
     close: "Close",
@@ -107,8 +115,8 @@ const messages = {
     logout: "Sign out",
     testConnection: "Test connection",
     testingConnection: "Testing…",
-    connectionReachable: "Port reachable in {latency} ms",
-    connectionUnreachable: "Port unreachable: {message}",
+    connectionReachable: "Connected in {latency} ms",
+    connectionUnreachable: "Connection failed: {message}",
     editAsset: "Edit asset",
     saveChanges: "Save changes",
     saving: "Saving…",
@@ -162,7 +170,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)")
     const applyTheme = () => {
-      document.documentElement.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme
+      const resolved = theme === "system" ? (media.matches ? "dark" : "light") : theme
+      document.documentElement.dataset.theme = resolved
+      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#282c34" : "#fafafa")
     }
     localStorage.setItem("awsl-remotex.theme", theme)
     applyTheme()

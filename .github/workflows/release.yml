@@ -37,6 +37,7 @@ jobs:
         working-directory: web
         run: |
           pnpm install --frozen-lockfile
+          pnpm test
           pnpm build
 
       - uses: actions/setup-go@v7
@@ -45,7 +46,8 @@ jobs:
 
       - name: Test and cross-compile server
         run: |
-          go test ./...
+          go test -race ./...
+          go vet ./...
           mkdir -p dist
           for arch in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
