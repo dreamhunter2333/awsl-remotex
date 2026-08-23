@@ -36,10 +36,10 @@ Mount `/app/data` on persistent storage. It contains the SQLite database. Keep `
 - The soft-keyboard button is shown only on touch phones and tablets.
 - The key-combination button is available on both touch and desktop devices; its list opens only after the button is clicked.
 - The PWA checks for updates when opened, when returning to the foreground, and every 15 minutes. A new version activates and reloads automatically.
-- On iOS/iPadOS, the application paints a solid safe-area layer behind the native status bar so translucent system rendering cannot blur page content. Remove and reinstall an existing PWA after this metadata changes.
+- On iOS/iPadOS, the installed app uses an opaque status bar so system translucency cannot blur page content. The remote viewport extends through the bottom safe area instead of reserving an empty strip. Remove and reinstall an existing PWA after this metadata changes.
 
 - 语言、主题、侧边栏状态、已打开 Tab 和自定义快捷键保存在浏览器本地存储中。
 - 软键盘按钮只在触屏手机和平板上显示。
 - 发送按键按钮在移动端和桌面端均可用，点击按钮后才展开快捷键列表。
 - PWA 会在启动、回到前台以及每 15 分钟自动检查更新；发现新版本后自动激活并刷新。
-- iOS/iPadOS 由应用在原生状态栏下方绘制纯色安全区，避免系统透明合成模糊页面内容；状态栏元数据变化后，请移除并重新安装已有 PWA。
+- iOS/iPadOS 安装版使用不透明状态栏，避免系统透明合成模糊页面；远程画面延伸至底部安全区，不再保留空条。状态栏元数据变化后，请移除并重新安装已有 PWA。
