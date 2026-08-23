@@ -5,7 +5,8 @@ import { AssetButton } from "@/components/asset-button"
 import { AssetDialog } from "@/components/asset-dialog"
 import { LoadingScreen, LoginScreen } from "@/components/auth-screens"
 import { PreferenceControls } from "@/components/preference-controls"
-import { SessionActions, SessionViewport } from "@/components/session"
+import { SessionActions } from "@/components/session-actions"
+import { SessionViewport } from "@/components/session"
 import { Button } from "@/components/ui/button"
 import { api, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
 import { displayGroup, protocolMeta } from "@/lib/assets"
@@ -242,6 +243,7 @@ export default function App() {
               active={Boolean(activeAsset)}
               fullscreen={fullscreen}
               onKeyboard={() => activeAsset && session.showKeyboard(activeAsset.id)}
+              onSendKeys={(keys) => activeAsset && session.sendKeys(activeAsset.id, keys)}
               onReconnect={() => activeAsset && session.reconnect(activeAsset)}
               onFullscreen={toggleFullscreen}
               onDisconnect={() => activeAsset && session.close(activeAsset.id)}

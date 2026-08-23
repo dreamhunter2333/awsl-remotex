@@ -1,14 +1,16 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
-import { Keyboard, LoaderCircle, Maximize2, Minimize2, Power, RefreshCw, Settings2 } from "lucide-react"
+import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { Asset } from "@/lib/api"
+import { sendKeyCombination, type KeyEventSender } from "@/lib/guacamole-keys"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
 export interface SessionHandle {
   disconnect: () => Promise<void>
   showKeyboard: () => boolean
+  sendKeys: (keys: readonly number[]) => boolean
 }
 
 export const SessionViewport = forwardRef<SessionHandle, {
@@ -50,6 +52,7 @@ export const SessionViewport = forwardRef<SessionHandle, {
       input.focus({ preventScroll: true })
       return input.ownerDocument.activeElement === input
     },
+    sendKeys: (keys) => sendKeyCombination(findGuacamoleClient(iframeRef.current), keys),
   }), [])
   useEffect(() => {
     activeRef.current = active
@@ -214,37 +217,16 @@ function readGuacamoleToken(value: string | null | undefined) {
   }
 }
 
-export function SessionActions({ active, fullscreen, onKeyboard, onReconnect, onFullscreen, onDisconnect }: {
-  active: boolean
-  fullscreen: boolean
-  onKeyboard: () => void
-  onReconnect: () => void
-  onFullscreen: () => void
-  onDisconnect: () => void
-}) {
-  const { t } = usePreferences()
-  const menuRef = useRef<HTMLDetailsElement>(null)
-  const run = (action: () => void) => {
-    action()
-    if (menuRef.current) menuRef.current.open = false
-  }
-
-  return (
-    <div className="relative flex shrink-0 items-center border-l border-[var(--border)] px-1">
-      <Button className="touch-session-action" variant="ghost" size="icon" disabled={!active} onClick={onKeyboard} aria-label={t("keyboard")} title={t("keyboard")}><Keyboard className="size-4" /></Button>
-      <div className="hidden items-center gap-0.5 @[520px]:flex">
-        <Button variant="ghost" size="icon" disabled={!active} onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-4" /></Button>
-        <Button variant="ghost" size="icon" disabled={!active} onClick={onFullscreen} aria-label={t(fullscreen ? "exitFullscreen" : "fullscreen")} title={t(fullscreen ? "exitFullscreen" : "fullscreen")}>{fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</Button>
-        <Button variant="danger" size="icon" disabled={!active} onClick={onDisconnect} aria-label={t("disconnect")} title={t("disconnect")}><Power className="size-4" /></Button>
-      </div>
-      <details ref={menuRef} className="group @[520px]:hidden">
-        <summary className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--muted)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden" aria-label={t("sessionActions")} title={t("sessionActions")}><Settings2 className="size-4" /></summary>
-        <div className="absolute right-1 top-[calc(100%+4px)] z-50 min-w-32 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] p-1 shadow-lg">
-          <button type="button" disabled={!active} onClick={() => run(onReconnect)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40"><RefreshCw className="size-3.5" />{t("reconnect")}</button>
-          <button type="button" disabled={!active} onClick={() => run(onFullscreen)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40">{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}{t(fullscreen ? "exitFullscreen" : "fullscreen")}</button>
-          <button type="button" disabled={!active} onClick={() => run(onDisconnect)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--danger)] hover:bg-[var(--danger-soft)] disabled:opacity-40"><Power className="size-3.5" />{t("disconnect")}</button>
-        </div>
-      </details>
-    </div>
-  )
+function findGuacamoleClient(iframe: HTMLIFrameElement | null): KeyEventSender | undefined {
+  if (!iframe) return undefined
+  const main = iframe.contentDocument?.querySelector(".client-main")
+  if (!main) return undefined
+  const frameWindow = iframe.contentWindow as (Window & {
+    angular?: {
+      element: (element: Element) => {
+        isolateScope: () => { client?: { client?: KeyEventSender } }
+      }
+    }
+  }) | null
+  return frameWindow?.angular?.element(main).isolateScope()?.client?.client
 }

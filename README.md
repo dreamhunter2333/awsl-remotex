@@ -13,6 +13,8 @@ Awsl RemoteX is a lightweight, modern browser-based remote workspace for managin
 - Encrypted passwords and SSH private keys with automatic login
 - Fully hideable asset sidebar
 - Reconnect, disconnect, and fullscreen controls
+- Mobile and tablet soft-keyboard control
+- Preset and user-defined key combinations on all devices
 - One Half Dark, One Half Light, and system themes
 - Chinese and English interfaces
 - Installable PWA for desktop and mobile devices
@@ -26,6 +28,8 @@ Awsl RemoteX is a lightweight, modern browser-based remote workspace for managin
 3. Use the edit button on an asset to update, test, or delete it.
 4. Each connection opens in its own tab. Reconnect, fullscreen, and disconnect controls are available on the right side of the tab bar.
 5. Remote displays automatically resize when the sidebar or browser window changes.
+
+Detailed references: [architecture](docs/architecture.md) and [configuration](docs/configuration.md).
 
 ## Docker Compose
 
