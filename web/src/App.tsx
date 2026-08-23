@@ -160,9 +160,9 @@ export default function App() {
           rel="noreferrer"
           aria-label={`Awsl RemoteX ${__APP_VERSION__} · GitHub`}
           title="GitHub"
-          className="inline-flex h-7 shrink-0 items-center rounded-md border border-[var(--border)] px-2 font-mono text-[9px] font-medium tabular-nums text-[var(--subtle)] transition hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[10px] font-medium tabular-nums text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
-          <GitHubMark className="size-3" />
+          <GitHubMark className="size-3.5 shrink-0" />
           {__APP_VERSION__}
         </a>
       </header>
