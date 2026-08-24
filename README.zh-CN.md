@@ -2,49 +2,42 @@
 
 [English](README.md) | **简体中文**
 
-Awsl RemoteX 是一个轻量、现代的浏览器远程控制工作台，用于在同一个页面中管理 SSH、RDP 和 VNC 连接。
+一个专注于 SSH、RDP 和 VNC 的浏览器远程工作台。资产统一放在侧边栏，多个远程会话通过 Tab 同时保持在线，无需离开页面即可快速切换。
 
-## 功能
+![Awsl RemoteX 工作区](docs/images/workspace.png)
 
-- SSH、RDP 和 VNC 远程连接
-- 多连接 Tab，可在多个会话之间快速切换
-- 单击选中资产，双击直接连接
-- 添加、编辑、删除资产及远程连接测试
-- 密码与 SSH 私钥加密存储，可自动登录远程主机
-- 可完全隐藏的资产侧边栏
-- 会话重连、断开和全屏控制
-- 移动端和平板软键盘按钮
-- 全平台预置与自定义快捷键
+## 核心能力
+
+- 基于 Apache Guacamole 支持 SSH、RDP 和 VNC
+- 多会话同时在线，使用紧凑 Tab 快速切换
+- 双击直接连接，凭据加密保存后可自动登录
+- 资产添加、编辑、删除及真实连接测试
+- 侧边栏可完全隐藏，远程画面自动适配可用空间
+- 重连、断开、全屏、软键盘及自定义快捷键
 - One Half Dark、One Half Light 与跟随系统主题
 - 中文和英文界面
-- PWA，可安装到桌面或移动设备
-- 可选的账号密码认证
-- SQLite 本地存储
+- 可安装 PWA，并自动更新
+- 可选的系统账号密码认证
+- SQLite 本地存储，无需外部数据库
 
-## 使用方式
+Awsl RemoteX 只专注远程控制，不包含会话录制、录像回放、审批流、命令审计或内网网页代理。
 
-1. 在左侧资产列表底部添加 SSH、RDP 或 VNC 资产。
-2. 单击资产进行选中，双击资产立即建立连接。
-3. 点击资产右侧的编辑按钮，可修改资产、测试端口或删除资产。
-4. 每个连接会打开独立 Tab；Tab 右侧提供重连、全屏和断开操作。
-5. 收起侧边栏或调整浏览器窗口时，远程画面会自动适配可用空间。
+## 快速开始
 
-详细文档：[架构说明](docs/architecture.md)与[配置说明](docs/configuration.md)。
-
-## Docker Compose
-
-克隆仓库，然后创建 `.env`：
+创建 `.env` 文件，启动前请替换所有示例密钥和密码。
 
 ```dotenv
 GUACAMOLE_JSON_SECRET=<openssl rand -hex 16 的输出>
 CREDENTIAL_KEY=<openssl rand -hex 32 的输出>
 AUTH_USERNAME=admin
-AUTH_PASSWORD=
+AUTH_PASSWORD=change-this-password
 GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
 SESSION_IDLE_TIMEOUT=24h
 ```
 
-`AUTH_USERNAME` 默认为 `admin`。`AUTH_PASSWORD` 可以留空，留空时不启用系统登录；对外提供服务时，建议设置密码并使用 HTTPS。
+`AUTH_USERNAME` 默认是 `admin`。设置 `AUTH_PASSWORD` 后启用系统登录；只有明确不需要认证时才应留空。服务只要超出可信内网范围，就应同时启用 HTTPS。
+
+使用下面的 Compose 文件：
 
 ```yaml
 services:
@@ -84,20 +77,23 @@ services:
     restart: unless-stopped
 ```
 
-启动服务后访问 `http://localhost:8080`：
+启动后访问 `http://localhost:8080`：
 
 ```bash
 docker compose up -d --build
 ```
 
-## 凭据与安全
+## 使用方式
 
-- 资产可以保存密码或 SSH 私钥，也可以选择不保存凭据。
-- 保存的资产凭据使用 AES-256-GCM 加密后写入 SQLite。
-- 资产列表和 API 不会返回已保存的密码或私钥。
-- 连接测试会使用当前表单中的信息，通过 `guacd` 实际尝试 SSH、RDP 或 VNC 连接。
-- `.env`、SQLite 数据库和运行数据默认不会提交到 Git。
+1. 从侧边栏底部添加 SSH、RDP 或 VNC 资产。
+2. 单击资产进行选中，双击立即连接。
+3. 在资产编辑弹窗中修改、测试或删除连接。
+4. 通过 Tab 切换在线会话，右侧始终保留当前会话操作。
 
-## 项目边界
+## 文档
 
-Awsl RemoteX 专注于远程控制，不提供会话录制、录像回放、命令审计、审批流或内网网页代理。
+- [文档索引](docs/README.md)
+- [架构说明](docs/architecture.md)
+- [配置说明](docs/configuration.md)
+
+保存的密码和私钥会使用 AES-256-GCM 加密后写入 SQLite，资产 API 不会返回已保存的凭据内容。

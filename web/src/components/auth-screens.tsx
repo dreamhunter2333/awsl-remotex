@@ -51,7 +51,7 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => Promis
           <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{t("signInDescription")}</p>
           <label className="mt-5 block space-y-1.5">
             <span className="text-xs text-[var(--muted)]">{t("username")}</span>
-            <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus required defaultValue="admin" />
+            <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus required />
           </label>
           <label className="mt-3 block space-y-1.5">
             <span className="text-xs text-[var(--muted)]">{t("password")}</span>

@@ -2,49 +2,42 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Awsl RemoteX is a lightweight, modern browser-based remote workspace for managing SSH, RDP, and VNC connections in one place.
+A focused browser workspace for SSH, RDP, and VNC. Keep assets in one sidebar, open several remote sessions in tabs, and switch between them without leaving the page.
 
-## Features
+![Awsl RemoteX workspace](docs/images/workspace.png)
 
-- SSH, RDP, and VNC remote connections
-- Multiple connection tabs with fast session switching
-- Single-click selection and double-click connection
-- Create, edit, delete, and test remote connections
-- Encrypted passwords and SSH private keys with automatic login
-- Fully hideable asset sidebar
-- Reconnect, disconnect, and fullscreen controls
-- Mobile and tablet soft-keyboard control
-- Preset and user-defined key combinations on all devices
-- One Half Dark, One Half Light, and system themes
-- Chinese and English interfaces
-- Installable PWA for desktop and mobile devices
-- Optional username and password authentication
-- Local SQLite storage
+## Highlights
 
-## Usage
+- SSH, RDP, and VNC through Apache Guacamole
+- Multiple live sessions with compact tabs
+- Double-click connection and encrypted automatic login
+- Asset creation, editing, deletion, and connection testing
+- A fully hideable sidebar and responsive remote display
+- Reconnect, disconnect, fullscreen, soft keyboard, and custom key combinations
+- One Half Dark, One Half Light, and system-aware themes
+- English and Chinese interfaces
+- Installable PWA with automatic updates
+- Optional application authentication
+- Local SQLite storage with no external database
 
-1. Add an SSH, RDP, or VNC asset from the bottom of the sidebar.
-2. Single-click an asset to select it, or double-click it to connect immediately.
-3. Use the edit button on an asset to update, test, or delete it.
-4. Each connection opens in its own tab. Reconnect, fullscreen, and disconnect controls are available on the right side of the tab bar.
-5. Remote displays automatically resize when the sidebar or browser window changes.
+Awsl RemoteX is intentionally limited to remote control. It does not include session recording, playback, approval workflows, command auditing, or an internal web proxy.
 
-Detailed references: [architecture](docs/architecture.md) and [configuration](docs/configuration.md).
+## Getting started
 
-## Docker Compose
-
-Clone the repository, then create `.env`:
+Create an `.env` file. Replace every example secret before starting the service.
 
 ```dotenv
 GUACAMOLE_JSON_SECRET=<output of openssl rand -hex 16>
 CREDENTIAL_KEY=<output of openssl rand -hex 32>
 AUTH_USERNAME=admin
-AUTH_PASSWORD=
+AUTH_PASSWORD=change-this-password
 GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
 SESSION_IDLE_TIMEOUT=24h
 ```
 
-`AUTH_USERNAME` defaults to `admin`. `AUTH_PASSWORD` is optional; leaving it empty disables application login. Set a password and use HTTPS when exposing the service publicly.
+`AUTH_USERNAME` defaults to `admin`. `AUTH_PASSWORD` enables application login; leave it empty only when you intentionally want authentication disabled. Use HTTPS whenever the service is reachable beyond a trusted network.
+
+Use the following Compose file:
 
 ```yaml
 services:
@@ -84,20 +77,23 @@ services:
     restart: unless-stopped
 ```
 
-Start the service and open `http://localhost:8080`:
+Start the stack and open `http://localhost:8080`:
 
 ```bash
 docker compose up -d --build
 ```
 
-## Credentials and security
+## Using the workspace
 
-- Assets can store a password or SSH private key, or keep no saved credential.
-- Saved credentials are encrypted with AES-256-GCM before being written to SQLite.
-- Asset lists and API responses never return saved passwords or private keys.
-- Connection tests ask `guacd` to establish a real SSH, RDP, or VNC connection with the current form values.
-- `.env`, SQLite databases, and runtime data are excluded from Git by default.
+1. Add an SSH, RDP, or VNC asset from the bottom of the sidebar.
+2. Single-click to select an asset or double-click to connect immediately.
+3. Open the asset editor to update, test, or delete the connection.
+4. Switch between active sessions through the tab bar. Session controls remain on its right side.
 
-## Scope
+## Documentation
 
-Awsl RemoteX focuses on remote control. It does not provide session recording, playback, command auditing, approval workflows, or internal web proxying.
+- [Documentation index](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Configuration](docs/configuration.md)
+
+Saved passwords and private keys are encrypted with AES-256-GCM before being written to SQLite. Asset APIs never return stored credential values.
