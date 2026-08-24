@@ -4,7 +4,7 @@
 
 一个专注于 SSH、RDP 和 VNC 的浏览器远程工作台。资产统一放在侧边栏，多个远程会话通过 Tab 同时保持在线，无需离开页面即可快速切换。
 
-![Awsl RemoteX 工作区](docs/images/workspace.png)
+![Awsl RemoteX 工作区](docs/images/workspace.webp)
 
 ## 核心能力
 

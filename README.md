@@ -4,7 +4,7 @@
 
 A focused browser workspace for SSH, RDP, and VNC. Keep assets in one sidebar, open several remote sessions in tabs, and switch between them without leaving the page.
 
-![Awsl RemoteX workspace](docs/images/workspace.png)
+![Awsl RemoteX workspace](docs/images/workspace.webp)
 
 ## Highlights
 
