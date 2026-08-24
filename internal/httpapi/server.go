@@ -32,6 +32,7 @@ type Config struct {
 	GuacamoleUpstream  string
 	AssetService       *assets.Service
 	GuacdTester        *guacamole.Tester
+	AuthUsername       string
 	AuthPassword       string
 	SessionIdleTimeout time.Duration
 }
@@ -43,7 +44,7 @@ func New(store *database.Store, logger *slog.Logger, config Config) (http.Handle
 		logger:             logger,
 		webDir:             config.WebDir,
 		guacd:              config.GuacdTester,
-		auth:               auth.New(config.AuthPassword),
+		auth:               auth.New(config.AuthUsername, config.AuthPassword),
 		guacamoleUpstream:  config.GuacamoleUpstream,
 		sessionIdleTimeout: config.SessionIdleTimeout,
 	}

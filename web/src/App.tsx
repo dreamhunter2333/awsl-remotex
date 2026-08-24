@@ -152,8 +152,6 @@ export default function App() {
           {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
         </Button>
         <div className="min-w-0 flex-1" />
-        <PreferenceControls />
-        {authStatus.required && <Button variant="ghost" size="icon" onClick={logout} aria-label={t("logout")} title={t("logout")}><LogOut className="size-4" /></Button>}
         <a
           href="https://github.com/dreamhunter2333/awsl-remotex"
           target="_blank"
@@ -165,6 +163,8 @@ export default function App() {
           <GitHubMark className="size-3.5 shrink-0" />
           {__APP_VERSION__}
         </a>
+        <PreferenceControls />
+        {authStatus.required && <Button variant="danger" size="icon" onClick={logout} aria-label={t("logout")} title={t("logout")}><LogOut className="size-3.5" /></Button>}
       </header>
 
       <div className={cn(

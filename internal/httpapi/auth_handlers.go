@@ -16,14 +16,15 @@ func (server *Server) authStatus(writer http.ResponseWriter, request *http.Reque
 
 func (server *Server) login(writer http.ResponseWriter, request *http.Request) {
 	var input struct {
+		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := decodeJSON(request, &input); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !server.auth.Login(writer, request, input.Password) {
-		writeError(writer, http.StatusUnauthorized, "invalid password")
+	if !server.auth.Login(writer, request, input.Username, input.Password) {
+		writeError(writer, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
 	writer.WriteHeader(http.StatusNoContent)

@@ -10,6 +10,7 @@ type Config struct {
 	Address             string
 	DatabasePath        string
 	WebDirectory        string
+	AuthUsername        string
 	AuthPassword        string
 	CredentialKey       string
 	GuacamoleJSONSecret string
@@ -28,6 +29,7 @@ func Load() (Config, error) {
 		Address:             value("ADDR", ":8080"),
 		DatabasePath:        value("DATABASE_PATH", "data/awsl-remotex.db"),
 		WebDirectory:        value("WEB_DIR", "web/dist"),
+		AuthUsername:        value("AUTH_USERNAME", "admin"),
 		AuthPassword:        os.Getenv("AUTH_PASSWORD"),
 		CredentialKey:       os.Getenv("CREDENTIAL_KEY"),
 		GuacamoleJSONSecret: os.Getenv("GUACAMOLE_JSON_SECRET"),

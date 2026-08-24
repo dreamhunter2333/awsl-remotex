@@ -18,7 +18,7 @@ Awsl RemoteX 是一个轻量、现代的浏览器远程控制工作台，用于�
 - One Half Dark、One Half Light 与跟随系统主题
 - 中文和英文界面
 - PWA，可安装到桌面或移动设备
-- 可选的全局访问密码
+- 可选的账号密码认证
 - SQLite 本地存储
 
 ## 使用方式
@@ -38,12 +38,13 @@ Awsl RemoteX 是一个轻量、现代的浏览器远程控制工作台，用于�
 ```dotenv
 GUACAMOLE_JSON_SECRET=<openssl rand -hex 16 的输出>
 CREDENTIAL_KEY=<openssl rand -hex 32 的输出>
+AUTH_USERNAME=admin
 AUTH_PASSWORD=
 GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
 SESSION_IDLE_TIMEOUT=24h
 ```
 
-`AUTH_PASSWORD` 可以留空。对外提供服务时，建议设置密码并使用 HTTPS。
+`AUTH_USERNAME` 默认为 `admin`。`AUTH_PASSWORD` 可以留空，留空时不启用系统登录；对外提供服务时，建议设置密码并使用 HTTPS。
 
 ```yaml
 services:
@@ -56,6 +57,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}

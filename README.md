@@ -18,7 +18,7 @@ Awsl RemoteX is a lightweight, modern browser-based remote workspace for managin
 - One Half Dark, One Half Light, and system themes
 - Chinese and English interfaces
 - Installable PWA for desktop and mobile devices
-- Optional global access password
+- Optional username and password authentication
 - Local SQLite storage
 
 ## Usage
@@ -38,12 +38,13 @@ Clone the repository, then create `.env`:
 ```dotenv
 GUACAMOLE_JSON_SECRET=<output of openssl rand -hex 16>
 CREDENTIAL_KEY=<output of openssl rand -hex 32>
+AUTH_USERNAME=admin
 AUTH_PASSWORD=
 GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
 SESSION_IDLE_TIMEOUT=24h
 ```
 
-`AUTH_PASSWORD` is optional. Set it and use HTTPS when exposing the service publicly.
+`AUTH_USERNAME` defaults to `admin`. `AUTH_PASSWORD` is optional; leaving it empty disables application login. Set a password and use HTTPS when exposing the service publicly.
 
 ```yaml
 services:
@@ -56,6 +57,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}

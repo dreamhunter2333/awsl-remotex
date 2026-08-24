@@ -59,6 +59,7 @@ func main() {
 		GuacamoleUpstream:  settings.GuacamoleUpstream,
 		AssetService:       assetService,
 		GuacdTester:        guacdTester,
+		AuthUsername:       settings.AuthUsername,
 		AuthPassword:       settings.AuthPassword,
 		SessionIdleTimeout: settings.SessionIdleTimeout,
 	})

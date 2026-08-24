@@ -1,5 +1,6 @@
-import { ChevronDown, Languages, Laptop, Moon, Sun, type LucideIcon } from "lucide-react"
+import { Languages, Laptop, Moon, Sun, type LucideIcon } from "lucide-react"
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { usePreferences, type Locale, type ThemeMode } from "@/lib/preferences"
 
 export function PreferenceControls() {
@@ -37,17 +38,14 @@ function PreferenceSelect({ icon: Icon, label, value, onChange, options }: {
   options: Array<{ value: string; label: string }>
 }) {
   return (
-    <label className="relative flex h-7.5 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface)] pl-2 pr-1 text-[11px] text-[var(--muted)] shadow-sm transition hover:border-[var(--border-strong)] hover:text-[var(--foreground)]" title={label}>
-      <Icon className="size-3 shrink-0" />
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={label}
-        className="h-full max-w-20 appearance-none bg-transparent pr-4 text-[11px] font-medium text-[var(--foreground)] outline-none"
-      >
-        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-1 size-2.5 text-[var(--subtle)]" />
-    </label>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger aria-label={label} title={label}>
+        <Icon className="size-3.5 shrink-0 text-[var(--muted)]" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
   )
 }

@@ -25,9 +25,11 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => Promis
     event.preventDefault()
     setSubmitting(true)
     setError("")
-    const password = String(new FormData(event.currentTarget).get("password") || "")
+    const values = new FormData(event.currentTarget)
+    const username = String(values.get("username") || "")
+    const password = String(values.get("password") || "")
     try {
-      await api.login(password)
+      await api.login(username, password)
       await onAuthenticated()
     } catch {
       setError(t("invalidPassword"))
@@ -48,8 +50,12 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => Promis
           <h1 className="text-lg font-semibold tracking-[-0.025em]">{t("signIn")}</h1>
           <p className="mt-1.5 text-xs leading-5 text-[var(--muted)]">{t("signInDescription")}</p>
           <label className="mt-5 block space-y-1.5">
+            <span className="text-xs text-[var(--muted)]">{t("username")}</span>
+            <Input name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus required defaultValue="admin" />
+          </label>
+          <label className="mt-3 block space-y-1.5">
             <span className="text-xs text-[var(--muted)]">{t("password")}</span>
-            <Input name="password" type="password" autoComplete="current-password" autoFocus required placeholder={t("passwordPlaceholder")} />
+            <Input name="password" type="password" autoComplete="current-password" required placeholder={t("passwordPlaceholder")} />
           </label>
           {error && <p role="alert" className="mt-3 text-xs text-[var(--danger)]">{error}</p>}
           <Button type="submit" className="mt-5 w-full" disabled={submitting}>{submitting ? t("signingIn") : t("signIn")}</Button>

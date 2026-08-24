@@ -71,18 +71,18 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
   }
 
   return (
-    <div className="relative flex shrink-0 items-center border-l border-[var(--border)] px-1">
-      <Button className="touch-session-action" variant="ghost" size="icon" disabled={!active} onClick={onKeyboard} aria-label={t("keyboard")} title={t("keyboard")}><Keyboard className="size-4" /></Button>
-      <div className="hidden items-center gap-0.5 @[520px]:flex">
-        <Button variant="ghost" size="icon" disabled={!active} onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-4" /></Button>
-        <Button variant="ghost" size="icon" disabled={!active} onClick={onFullscreen} aria-label={t(fullscreen ? "exitFullscreen" : "fullscreen")} title={t(fullscreen ? "exitFullscreen" : "fullscreen")}>{fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</Button>
-        <Button variant="danger" size="icon" disabled={!active} onClick={onDisconnect} aria-label={t("disconnect")} title={t("disconnect")}><Power className="size-4" /></Button>
+    <div className="relative flex shrink-0 items-center gap-0.5 border-l border-[var(--border)] px-1">
+      <Button className="touch-session-action order-1" variant="ghost" size="icon" disabled={!active} onClick={onKeyboard} aria-label={t("keyboard")} title={t("keyboard")}><Keyboard className="size-3.5" /></Button>
+      <div className="order-3 hidden items-center gap-0.5 @[520px]:flex">
+        <Button variant="ghost" size="icon" disabled={!active} onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-3.5" /></Button>
+        <Button variant="ghost" size="icon" disabled={!active} onClick={onFullscreen} aria-label={t(fullscreen ? "exitFullscreen" : "fullscreen")} title={t(fullscreen ? "exitFullscreen" : "fullscreen")}>{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}</Button>
+        <Button className="ml-0.5 text-[var(--muted)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]" variant="ghost" size="icon" disabled={!active} onClick={onDisconnect} aria-label={t("disconnect")} title={t("disconnect")}><Power className="size-3.5" /></Button>
       </div>
 
-      <details ref={shortcutMenuRef} onToggle={() => {
+      <details ref={shortcutMenuRef} className="order-2" onToggle={() => {
         if (shortcutMenuRef.current?.open) closeMenu(actionMenuRef)
       }}>
-        <summary className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--muted)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden" aria-label={t("shortcuts")} title={t("shortcuts")}><Command className="size-4" /></summary>
+        <summary className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--muted)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden" aria-label={t("shortcuts")} title={t("shortcuts")}><Command className="size-3.5" /></summary>
         <div className="absolute right-1 top-[calc(100%+4px)] z-50 max-h-[min(70dvh,420px)] w-56 overflow-y-auto rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] p-1 shadow-lg">
           <span className="block px-2 py-1 text-[10px] font-medium text-[var(--subtle)]">{t("shortcuts")}</span>
           <div className="grid grid-cols-2 gap-1">
@@ -111,7 +111,7 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
         </div>
       </details>
 
-      <details ref={actionMenuRef} className="@[520px]:hidden" onToggle={() => {
+      <details ref={actionMenuRef} className="order-4 @[520px]:hidden" onToggle={() => {
         if (actionMenuRef.current?.open) closeMenu(shortcutMenuRef)
       }}>
         <summary className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--muted)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden" aria-label={t("sessionActions")} title={t("sessionActions")}><Settings2 className="size-4" /></summary>

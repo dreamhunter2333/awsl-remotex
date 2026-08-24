@@ -8,7 +8,8 @@
 | `GUACAMOLE_JSON_SECRET` | Yes | — | 32 hexadecimal characters shared with Guacamole JSON authentication. |
 | `GUACAMOLE_UPSTREAM` | Yes | — | Internal Guacamole HTTP address, such as `http://guacamole:8080`. |
 | `GUACD_ADDRESS` | Yes | — | Internal `guacd` address, such as `guacd:4822`. |
-| `AUTH_PASSWORD` | No | empty | Global web password. Empty disables application login. |
+| `AUTH_USERNAME` | No | `admin` | Web login username. |
+| `AUTH_PASSWORD` | No | empty | Web login password. Empty disables application login. |
 | `SESSION_IDLE_TIMEOUT` | No | `24h` | Closes remote sessions with no user activity for this duration. |
 | `GUACAMOLE_PUBLIC_PATH` | No | `/guacamole` | Same-origin path used to expose Guacamole through the application. |
 | `GUACAMOLE_SESSION_TIMEOUT_MINUTES` | No | `1440` | Guacamole session timeout used by the Compose example. |

@@ -9,7 +9,7 @@ Use the running service API instead of editing SQLite. Resolve the base URL from
 
 ## Authentication
 
-Call `GET /api/auth/status` first. If `required` is true, authenticate through `POST /api/auth/login` with `{"password":"..."}` and retain the returned cookie for all later requests. Read the password from `AWSL_REMOTEX_PASSWORD`, falling back to `AUTH_PASSWORD`; never print it or place it directly in a visible command line. Stop and report the requirement if neither variable is set.
+Call `GET /api/auth/status` first. If `required` is true, authenticate through `POST /api/auth/login` with `{"username":"...","password":"..."}` and retain the returned cookie for all later requests. Read the username from `AWSL_REMOTEX_USERNAME`, falling back to `AUTH_USERNAME` and then `admin`. Read the password from `AWSL_REMOTEX_PASSWORD`, falling back to `AUTH_PASSWORD`; never print credentials or place them directly in a visible command line. Stop and report the requirement if no password is set.
 
 ## Asset operations
 

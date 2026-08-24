@@ -63,7 +63,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   authStatus: () => request<AuthStatus>("/api/auth/status"),
-  login: (password: string) => request<void>("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) }),
+  login: (username: string, password: string) => request<void>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request<void>("/api/auth/session", { method: "DELETE" }),
   listAssets: () => request<Asset[]>("/api/assets"),
   createAsset: (input: AssetInput) =>

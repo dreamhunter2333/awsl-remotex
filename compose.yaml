@@ -8,6 +8,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY to 64 hexadecimal characters}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET to 32 hexadecimal characters}
