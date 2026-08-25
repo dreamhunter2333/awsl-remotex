@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
 
+const proxyTarget = process.env.VITE_PROXY_TARGET ?? "http://localhost:8080"
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(process.env.APP_VERSION ?? process.env.GITHUB_REF_NAME ?? "dev"),
@@ -39,8 +41,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:8080",
-      "/guacamole": "http://localhost:8080",
+      "/api": proxyTarget,
+      "/guacamole": { target: proxyTarget, ws: true },
     },
   },
 })

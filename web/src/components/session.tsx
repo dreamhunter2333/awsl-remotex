@@ -133,8 +133,9 @@ export const SessionViewport = forwardRef<SessionHandle, {
         fitGuacamoleDisplay(iframe)
       })
       window.clearTimeout(resizeTimer)
-      resizeTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 80)
       window.clearTimeout(resizeRetryTimer)
+      if (!sawConnectedView) return
+      resizeTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 80)
       resizeRetryTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 320)
       window.clearTimeout(focusTimer)
       focusTimer = window.setTimeout(focusFrame, 240)
