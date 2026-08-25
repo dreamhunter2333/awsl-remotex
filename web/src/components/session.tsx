@@ -3,7 +3,8 @@ import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { Asset } from "@/lib/api"
-import { sendKeyCombination, type KeyEventSender } from "@/lib/guacamole-keys"
+import { findGuacamoleClient, fitGuacamoleDisplay, resizeGuacamoleRemote } from "@/lib/guacamole-frame"
+import { sendKeyCombination } from "@/lib/guacamole-keys"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
@@ -33,6 +34,7 @@ export const SessionViewport = forwardRef<SessionHandle, {
   const onActivityRef = useRef(onActivity)
   const activeRef = useRef(active)
   const tokenRef = useRef("")
+  const notifyResizeRef = useRef<() => void>(() => undefined)
 
   useEffect(() => { onSessionEndedRef.current = onSessionEnded }, [onSessionEnded])
   useEffect(() => { onReadyRef.current = onReady }, [onReady])
@@ -57,6 +59,7 @@ export const SessionViewport = forwardRef<SessionHandle, {
   useEffect(() => {
     activeRef.current = active
     if (!active || !frameReady) return
+    notifyResizeRef.current()
     iframeRef.current?.focus()
     iframeRef.current?.contentWindow?.focus()
   }, [active, frameReady])
@@ -72,6 +75,8 @@ export const SessionViewport = forwardRef<SessionHandle, {
     let sawClientRoute = false
     let sawConnectedView = false
     let resizeFrame = 0
+    let resizeTimer = 0
+    let resizeRetryTimer = 0
     let focusTimer = 0
     let routeTimer = 0
     let mutationObserver: MutationObserver | undefined
@@ -112,6 +117,7 @@ export const SessionViewport = forwardRef<SessionHandle, {
           setFrameReady(true)
           tokenRef.current = readGuacamoleToken(iframe.contentWindow?.localStorage.getItem("GUAC_AUTH_TOKEN"))
           onReadyRef.current()
+          notifyResize()
           window.requestAnimationFrame(focusFrame)
           return
         }
@@ -124,15 +130,17 @@ export const SessionViewport = forwardRef<SessionHandle, {
     const notifyResize = () => {
       window.cancelAnimationFrame(resizeFrame)
       resizeFrame = window.requestAnimationFrame(() => {
-        try {
-          iframe.contentWindow?.dispatchEvent(new Event("resize"))
-        } catch {
-          return
-        }
+        fitGuacamoleDisplay(iframe)
       })
+      window.clearTimeout(resizeTimer)
+      resizeTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 80)
+      window.clearTimeout(resizeRetryTimer)
+      resizeRetryTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 320)
       window.clearTimeout(focusTimer)
       focusTimer = window.setTimeout(focusFrame, 240)
     }
+
+    notifyResizeRef.current = notifyResize
 
     const attachFrameListeners = () => {
       try {
@@ -171,8 +179,11 @@ export const SessionViewport = forwardRef<SessionHandle, {
       }
       resizeObserver.disconnect()
       mutationObserver?.disconnect()
+      notifyResizeRef.current = () => undefined
       window.clearTimeout(routeTimer)
       window.cancelAnimationFrame(resizeFrame)
+      window.clearTimeout(resizeTimer)
+      window.clearTimeout(resizeRetryTimer)
       window.clearTimeout(focusTimer)
     }
   }, [connectionURL])
@@ -215,18 +226,4 @@ function readGuacamoleToken(value: string | null | undefined) {
   } catch {
     return value
   }
-}
-
-function findGuacamoleClient(iframe: HTMLIFrameElement | null): KeyEventSender | undefined {
-  if (!iframe) return undefined
-  const main = iframe.contentDocument?.querySelector(".client-main")
-  if (!main) return undefined
-  const frameWindow = iframe.contentWindow as (Window & {
-    angular?: {
-      element: (element: Element) => {
-        isolateScope: () => { client?: { client?: KeyEventSender } }
-      }
-    }
-  }) | null
-  return frameWindow?.angular?.element(main).isolateScope()?.client?.client
 }
