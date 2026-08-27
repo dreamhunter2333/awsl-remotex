@@ -274,7 +274,7 @@ export default function App() {
                     connectionError={session.connectionErrors[id]}
                     connecting={session.connectingIDs.has(id)}
                     onReconnect={() => session.reconnect(asset)}
-                    onSessionEnded={() => session.ended(id)}
+                    onSessionEnded={(message) => session.ended(id, message)}
                     onReady={() => session.ready(id)}
                     onActivity={() => session.activity(id)}
                   />

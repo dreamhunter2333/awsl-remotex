@@ -25,14 +25,3 @@ export function saveSessions(value: StoredSessions) {
 export function clearSessions() {
   localStorage.removeItem(STORAGE_KEY)
 }
-
-export function prepareGuacamoleStorage() {
-  localStorage.removeItem("GUAC_AUTH_TOKEN")
-  localStorage.removeItem("GUAC_HISTORY")
-  try {
-    const preferences = JSON.parse(localStorage.getItem("GUAC_PREFERENCES") || "{}") as Record<string, unknown>
-    localStorage.setItem("GUAC_PREFERENCES", JSON.stringify({ ...preferences, emulateAbsoluteMouse: false }))
-  } catch {
-    localStorage.setItem("GUAC_PREFERENCES", JSON.stringify({ emulateAbsoluteMouse: false }))
-  }
-}

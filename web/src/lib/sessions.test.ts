@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest"
 
-import { loadSessions, prepareGuacamoleStorage, saveSessions } from "./sessions"
+import { loadSessions, saveSessions } from "./sessions"
 
 describe("session storage", () => {
   beforeEach(() => {
@@ -15,16 +15,6 @@ describe("session storage", () => {
   it("falls back safely when stored data is invalid", () => {
     localStorage.setItem("awsl-remotex.sessions", "{")
     expect(loadSessions()).toEqual({ ids: [], activity: {} })
-  })
-
-  it("keeps Guacamole preferences while selecting touchpad mode", () => {
-    localStorage.setItem("GUAC_AUTH_TOKEN", "token")
-    localStorage.setItem("GUAC_HISTORY", "history")
-    localStorage.setItem("GUAC_PREFERENCES", JSON.stringify({ language: "zh_CN", emulateAbsoluteMouse: true }))
-    prepareGuacamoleStorage()
-    expect(localStorage.getItem("GUAC_AUTH_TOKEN")).toBeNull()
-    expect(localStorage.getItem("GUAC_HISTORY")).toBeNull()
-    expect(JSON.parse(localStorage.getItem("GUAC_PREFERENCES") || "{}")).toEqual({ language: "zh_CN", emulateAbsoluteMouse: false })
   })
 })
 

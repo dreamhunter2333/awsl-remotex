@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { SessionHandle } from "@/components/session"
 import { api, type Asset } from "@/lib/api"
-import { clearSessions, loadSessions, prepareGuacamoleStorage, saveSessions } from "@/lib/sessions"
+import { clearSessions, loadSessions, saveSessions } from "@/lib/sessions"
 
 const READY_TIMEOUT_MS = 15_000
 
@@ -68,7 +68,6 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
         const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark"
         const ticket = await api.connectAsset(asset.id, theme)
         if ((generationsRef.current.get(asset.id) ?? 0) !== generation) return
-        prepareGuacamoleStorage()
         updateURLs((current) => ({ ...current, [asset.id]: ticket.url }))
         await new Promise<void>((resolve) => {
           const timeout = window.setTimeout(resolve, READY_TIMEOUT_MS)
@@ -126,11 +125,11 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     if (!urlsRef.current[asset.id]) connect(asset)
   }, [connect, setActiveSession, updateSessions])
 
-  const ended = useCallback((id: string) => {
+  const ended = useCallback((id: string, message = sessionEnded) => {
     resolveReady(id)
     void handlesRef.current.get(id)?.disconnect()
     updateURLs((current) => omitKey(current, id))
-    setConnectionErrors((current) => ({ ...current, [id]: sessionEnded }))
+    setConnectionErrors((current) => ({ ...current, [id]: message }))
   }, [resolveReady, sessionEnded, updateURLs])
 
   const registerHandle = useCallback((id: string, handle: SessionHandle | null) => {

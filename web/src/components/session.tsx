@@ -3,8 +3,7 @@ import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { Asset } from "@/lib/api"
-import { findGuacamoleClient, fitGuacamoleDisplay, resizeGuacamoleRemote } from "@/lib/guacamole-frame"
-import { sendKeyCombination } from "@/lib/guacamole-keys"
+import { GuacamoleSession, type GuacamoleFailure } from "@/lib/guacamole-session"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
@@ -14,217 +13,169 @@ export interface SessionHandle {
   sendKeys: (keys: readonly number[]) => boolean
 }
 
-export const SessionViewport = forwardRef<SessionHandle, {
+interface SessionViewportProps {
   active: boolean
   asset: Asset
   connectionURL?: string
   connectionError?: string
   connecting: boolean
   onReconnect: () => void
-  onSessionEnded: () => void
+  onSessionEnded: (message: string) => void
   onReady: () => void
   onActivity: () => void
-}>(function SessionViewport({ active, asset, connectionURL, connectionError, connecting, onReconnect, onSessionEnded, onReady, onActivity }, ref) {
+}
+
+export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(function SessionViewport({
+  active,
+  asset,
+  connectionURL,
+  connectionError,
+  connecting,
+  onReconnect,
+  onSessionEnded,
+  onReady,
+  onActivity,
+}, ref) {
   const { t } = usePreferences()
   const [frameReady, setFrameReady] = useState(false)
   const viewportRef = useRef<HTMLElement>(null)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const displayHostRef = useRef<HTMLDivElement>(null)
+  const displaySurfaceRef = useRef<HTMLDivElement>(null)
+  const keyboardInputRef = useRef<HTMLTextAreaElement>(null)
+  const controllerRef = useRef<GuacamoleSession>(null)
+  const activeRef = useRef(active)
   const onSessionEndedRef = useRef(onSessionEnded)
   const onReadyRef = useRef(onReady)
   const onActivityRef = useRef(onActivity)
-  const activeRef = useRef(active)
-  const tokenRef = useRef("")
   const notifyResizeRef = useRef<() => void>(() => undefined)
 
-  useEffect(() => { onSessionEndedRef.current = onSessionEnded }, [onSessionEnded])
-  useEffect(() => { onReadyRef.current = onReady }, [onReady])
-  useEffect(() => { onActivityRef.current = onActivity }, [onActivity])
+  activeRef.current = active
+  onSessionEndedRef.current = onSessionEnded
+  onReadyRef.current = onReady
+  onActivityRef.current = onActivity
+
+  const failureMessage = (failure: GuacamoleFailure) => {
+    switch (failure) {
+      case "sdk": return t("guacamoleSdkError")
+      case "authentication": return t("guacamoleAuthenticationError")
+      case "forbidden": return t("guacamoleForbiddenError")
+      case "dns": return t("guacamoleDnsError")
+      case "certificate": return t("guacamoleCertificateError")
+      case "security": return t("guacamoleSecurityError")
+      case "timeout": return t("guacamoleTimeoutError")
+      case "busy": return t("guacamoleBusyError")
+      case "conflict": return t("guacamoleConflictError")
+      case "upstream": return t("guacamoleUpstreamError")
+      default: return t("sessionEnded")
+    }
+  }
+  const failureMessageRef = useRef(failureMessage)
+  failureMessageRef.current = failureMessage
 
   useImperativeHandle(ref, () => ({
-    disconnect: async () => {
-      const token = tokenRef.current
-      if (!token) return
-      tokenRef.current = ""
-      const encoded = encodeURIComponent(token)
-      await fetch(`/guacamole/api/tokens/${encoded}?token=${encoded}`, { method: "DELETE", keepalive: true }).catch(() => undefined)
-    },
-    showKeyboard: () => {
-      const input = iframeRef.current?.contentDocument?.querySelector<HTMLTextAreaElement>(".client textarea:not(.clipboard-service-target)")
-      if (!input) return false
-      input.focus({ preventScroll: true })
-      return input.ownerDocument.activeElement === input
-    },
-    sendKeys: (keys) => sendKeyCombination(findGuacamoleClient(iframeRef.current), keys),
+    disconnect: () => controllerRef.current?.disconnect() ?? Promise.resolve(),
+    showKeyboard: () => controllerRef.current?.focus() ?? false,
+    sendKeys: (keys) => controllerRef.current?.sendKeys(keys) ?? false,
   }), [])
-  useEffect(() => {
-    activeRef.current = active
-    if (!active || !frameReady) return
-    notifyResizeRef.current()
-    iframeRef.current?.focus()
-    iframeRef.current?.contentWindow?.focus()
-  }, [active, frameReady])
 
   useEffect(() => {
-    setFrameReady(false)
-    if (!connectionURL) return
-
-    const iframe = iframeRef.current
     const viewport = viewportRef.current
-    if (!iframe || !viewport) return
+    const displayHost = displayHostRef.current
+    const displaySurface = displaySurfaceRef.current
+    const keyboardInput = keyboardInputRef.current
+    if (!viewport || !displayHost || !displaySurface || !keyboardInput) return
 
-    let sawClientRoute = false
-    let sawConnectedView = false
     let resizeFrame = 0
     let resizeTimer = 0
     let resizeRetryTimer = 0
-    let focusTimer = 0
-    let routeTimer = 0
-    let mutationObserver: MutationObserver | undefined
-    const activityEvents = ["pointerdown", "keydown", "touchstart", "wheel"] as const
-    const reportActivity = () => onActivityRef.current()
-
-    const focusFrame = () => {
-      if (!activeRef.current || document.querySelector("dialog[open]")) return
-      const focused = document.activeElement
-      if (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement || focused instanceof HTMLSelectElement) return
-      iframe.focus()
-      iframe.contentWindow?.focus()
-    }
-
-    const inspectRoute = () => {
-      try {
-        const hash = iframe.contentWindow?.location.hash ?? ""
-        if (hash.startsWith("#/client/")) {
-          sawClientRoute = true
-          tokenRef.current = readGuacamoleToken(iframe.contentWindow?.localStorage.getItem("GUAC_AUTH_TOKEN"))
-          return
-        }
-        setFrameReady(false)
-        if (sawClientRoute) onSessionEndedRef.current()
-      } catch {
-        setFrameReady(true)
-      }
-    }
-
-    const inspectStatus = () => {
-      try {
-        const document = iframe.contentDocument
-        const status = document?.querySelector(".client-status-modal")
-        if (!document?.querySelector(".client-main") || !status) return
-        if (!status.classList.contains("shown")) {
-          if (sawConnectedView) return
-          sawConnectedView = true
-          setFrameReady(true)
-          tokenRef.current = readGuacamoleToken(iframe.contentWindow?.localStorage.getItem("GUAC_AUTH_TOKEN"))
-          onReadyRef.current()
-          notifyResize()
-          window.requestAnimationFrame(focusFrame)
-          return
-        }
-        if (sawConnectedView) onSessionEndedRef.current()
-      } catch {
-        setFrameReady(true)
-      }
-    }
-
     const notifyResize = () => {
       window.cancelAnimationFrame(resizeFrame)
-      resizeFrame = window.requestAnimationFrame(() => {
-        fitGuacamoleDisplay(iframe)
-      })
+      resizeFrame = window.requestAnimationFrame(() => controllerRef.current?.fitDisplay())
       window.clearTimeout(resizeTimer)
       window.clearTimeout(resizeRetryTimer)
-      if (!sawConnectedView) return
-      resizeTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 80)
-      resizeRetryTimer = window.setTimeout(() => resizeGuacamoleRemote(iframe), 320)
-      window.clearTimeout(focusTimer)
-      focusTimer = window.setTimeout(focusFrame, 240)
+      resizeTimer = window.setTimeout(() => controllerRef.current?.resizeRemote(), 80)
+      resizeRetryTimer = window.setTimeout(() => controllerRef.current?.resizeRemote(), 320)
     }
-
     notifyResizeRef.current = notifyResize
 
-    const attachFrameListeners = () => {
-      try {
-        iframe.contentWindow?.addEventListener("hashchange", inspectRoute)
-        activityEvents.forEach((name) => iframe.contentWindow?.addEventListener(name, reportActivity, { capture: true }))
-        mutationObserver?.disconnect()
-        mutationObserver = new MutationObserver(inspectStatus)
-        if (iframe.contentDocument?.documentElement) {
-          mutationObserver.observe(iframe.contentDocument.documentElement, { attributes: true, childList: true, subtree: true })
-        }
-      } catch {
-        return
-      }
-      inspectRoute()
-      inspectStatus()
-      notifyResize()
-    }
+    const controller = new GuacamoleSession(displayHost, displaySurface, keyboardInput, {
+      isActive: () => activeRef.current,
+      onActivity: () => onActivityRef.current(),
+      onDisplayResize: notifyResize,
+      onEnded: (failure) => {
+        setFrameReady(false)
+        onSessionEndedRef.current(failureMessageRef.current(failure))
+      },
+      onReady: () => {
+        setFrameReady(true)
+        onReadyRef.current()
+      },
+    })
+    controllerRef.current = controller
 
-    iframe.addEventListener("load", attachFrameListeners)
-    window.addEventListener("focus", focusFrame)
     const resizeObserver = new ResizeObserver(notifyResize)
     resizeObserver.observe(viewport)
-    routeTimer = window.setTimeout(() => {
-      if (!sawConnectedView) onSessionEndedRef.current()
-    }, 15_000)
-    attachFrameListeners()
-
     return () => {
-      iframe.removeEventListener("load", attachFrameListeners)
-      window.removeEventListener("focus", focusFrame)
-      try {
-        iframe.contentWindow?.removeEventListener("hashchange", inspectRoute)
-        activityEvents.forEach((name) => iframe.contentWindow?.removeEventListener(name, reportActivity, { capture: true }))
-      } catch {
-        // The frame may have navigated away before cleanup.
-      }
       resizeObserver.disconnect()
-      mutationObserver?.disconnect()
       notifyResizeRef.current = () => undefined
-      window.clearTimeout(routeTimer)
       window.cancelAnimationFrame(resizeFrame)
       window.clearTimeout(resizeTimer)
       window.clearTimeout(resizeRetryTimer)
-      window.clearTimeout(focusTimer)
+      if (controllerRef.current === controller) controllerRef.current = null
+      void controller.dispose()
     }
-  }, [connectionURL])
+  }, [])
 
-  if (connectionURL) {
-    return (
-      <section ref={viewportRef} className="relative h-full min-h-0 overflow-hidden bg-[var(--canvas)]">
-        <iframe
-          ref={iframeRef}
-          key={connectionURL}
-          src={connectionURL}
-          title={t("remoteSession", { name: asset.name })}
-          allow="clipboard-read; clipboard-write; fullscreen"
-          className={cn("size-full border-0 bg-[var(--canvas)] transition-opacity duration-100", frameReady ? "opacity-100" : "opacity-0")}
-        />
-        {!frameReady && <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]"><LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" /></div>}
-      </section>
-    )
-  }
+  useEffect(() => {
+    setFrameReady(false)
+    const controller = controllerRef.current
+    if (!controller || !connectionURL) {
+      void controller?.disconnect()
+      return
+    }
+    void controller.connect(asset.name, connectionURL)
+    return () => { void controller.disconnect() }
+  }, [asset.name, connectionURL])
+
+  useEffect(() => {
+    if (!active || !frameReady) return
+    notifyResizeRef.current()
+    controllerRef.current?.focus()
+  }, [active, frameReady])
 
   return (
-    <section className="grid h-full min-h-0 place-items-center overflow-hidden bg-[var(--canvas)]">
-      {connecting || !connectionError ? (
-        <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />
-      ) : (
-        <div role="alertdialog" aria-modal="false" className="flex items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2.5 shadow-lg">
-          <span className="max-w-80 text-xs text-[var(--muted)]">{connectionError}</span>
-          <Button variant="outline" size="sm" onClick={onReconnect}><RefreshCw className="size-3.5" />{t("reconnect")}</Button>
+    <section ref={viewportRef} className="relative h-full min-h-0 overflow-hidden bg-[var(--canvas)]">
+      <div ref={displayHostRef} className={cn("grid size-full place-items-center overflow-hidden transition-opacity duration-100", connectionURL && frameReady ? "opacity-100" : "opacity-0")}>
+        <div ref={displaySurfaceRef} className="relative shrink-0" />
+      </div>
+      <textarea
+        ref={keyboardInputRef}
+        tabIndex={-1}
+        aria-label={t("remoteSession", { name: asset.name })}
+        autoCapitalize="none"
+        autoCorrect="off"
+        enterKeyHint="done"
+        inputMode="text"
+        spellCheck={false}
+        className="fixed bottom-0 left-0 size-px resize-none opacity-0 outline-none"
+      />
+      {connectionURL && !frameReady && (
+        <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]">
+          <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />
+        </div>
+      )}
+      {!connectionURL && (
+        <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]">
+          {connecting || !connectionError ? (
+            <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />
+          ) : (
+            <div role="alertdialog" aria-modal="false" className="flex items-center gap-3 rounded-xl border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2.5 shadow-lg">
+              <span className="max-w-80 text-xs text-[var(--muted)]">{connectionError}</span>
+              <Button variant="outline" size="sm" onClick={onReconnect}><RefreshCw className="size-3.5" />{t("reconnect")}</Button>
+            </div>
+          )}
         </div>
       )}
     </section>
   )
 })
-
-function readGuacamoleToken(value: string | null | undefined) {
-  if (!value) return ""
-  try {
-    const parsed = JSON.parse(value) as unknown
-    return typeof parsed === "string" ? parsed : value
-  } catch {
-    return value
-  }
-}
