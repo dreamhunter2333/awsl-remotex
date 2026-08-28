@@ -196,7 +196,7 @@ describe("Guacamole direct session", () => {
     await session.connect("Atlas Desktop", "/guacamole/?data=ticket")
     const client = runtime.clients[0]
     expect(new URLSearchParams(client.connectData).get("GUAC_ID")).toBe("Atlas Desktop")
-    expect(runtime.keyboards[0].element).toBe(keyboardInput)
+    expect(runtime.keyboards[0].element).toBe(keyboardInput.ownerDocument)
 
     client.onstatechange?.(3)
     expect(ready).toHaveBeenCalledOnce()

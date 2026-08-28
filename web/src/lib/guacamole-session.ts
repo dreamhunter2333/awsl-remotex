@@ -1,4 +1,4 @@
-import type { Client, Event as GuacamoleEvent, Keyboard, Mouse, Status } from "guacamole-common-js"
+import type { Client, Event as GuacamoleEvent, Mouse, Status } from "guacamole-common-js"
 
 import { sendKeyCombination, type KeyEventSender } from "./guacamole-keys"
 import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacamole-sdk"
@@ -122,12 +122,78 @@ interface GuacamoleSessionDependencies {
   writeClipboard?: (text: string) => Promise<void>
 }
 
+interface DocumentKeyboardTarget {
+  isActive: () => boolean
+  onkeydown: (keysym: number) => void
+  onkeyup: (keysym: number) => void
+}
+
+interface DocumentKeyboardRegistration {
+  release: () => void
+  unregister: () => void
+}
+
+class DocumentKeyboardRouter {
+  private readonly owners = new Map<number, DocumentKeyboardTarget>()
+  private readonly targets = new Set<DocumentKeyboardTarget>()
+
+  constructor(sdk: GuacamoleSDK, document: Document) {
+    const keyboard = new sdk.Keyboard(document)
+    keyboard.onkeydown = (keysym) => {
+      const target = this.getActiveTarget()
+      if (!target) return true
+      this.owners.set(keysym, target)
+      target.onkeydown(keysym)
+      return false
+    }
+    keyboard.onkeyup = (keysym) => {
+      const target = this.owners.get(keysym)
+      if (!target) return
+      this.owners.delete(keysym)
+      target.onkeyup(keysym)
+    }
+  }
+
+  register(target: DocumentKeyboardTarget): DocumentKeyboardRegistration {
+    this.targets.add(target)
+    return {
+      release: () => this.release(target),
+      unregister: () => {
+        this.release(target)
+        this.targets.delete(target)
+      },
+    }
+  }
+
+  private release(target: DocumentKeyboardTarget) {
+    for (const [keysym, owner] of this.owners) {
+      if (owner !== target) continue
+      this.owners.delete(keysym)
+      target.onkeyup(keysym)
+    }
+  }
+
+  private getActiveTarget() {
+    return [...this.targets].find((target) => target.isActive())
+  }
+}
+
+const documentKeyboards = new WeakMap<Document, DocumentKeyboardRouter>()
+
+function getDocumentKeyboard(sdk: GuacamoleSDK, document: Document) {
+  const existing = documentKeyboards.get(document)
+  if (existing) return existing
+  const keyboard = new DocumentKeyboardRouter(sdk, document)
+  documentKeyboards.set(document, keyboard)
+  return keyboard
+}
+
 export class GuacamoleSession implements KeyEventSender {
   private abortController?: AbortController
   private client?: Client
   private connected = false
   private generation = 0
-  private keyboard?: Keyboard
+  private keyboard?: DocumentKeyboardRegistration
   private reported = false
   private sdk?: GuacamoleSDK
   private token = ""
@@ -183,13 +249,9 @@ export class GuacamoleSession implements KeyEventSender {
     this.keyboardInput.removeEventListener("keypress", this.clearInput)
     this.keyboardInput.removeEventListener("compositionend", this.clearInput)
     this.keyboardInput.removeEventListener("input", this.clearInput)
-    if (this.keyboard) {
-      this.keyboard.reset()
-      this.keyboard.onkeydown = null
-      this.keyboard.onkeyup = null
-      this.keyboard = undefined
-    }
     await this.disconnect()
+    this.keyboard?.unregister()
+    this.keyboard = undefined
   }
 
   focus() {
@@ -237,13 +299,14 @@ export class GuacamoleSession implements KeyEventSender {
 
   private ensureKeyboard() {
     if (this.keyboard || !this.sdk) return
-    this.keyboard = new this.sdk.Keyboard(this.keyboardInput)
-    this.keyboard.onkeydown = (keysym) => {
-      this.client?.sendKeyEvent(1, keysym)
-      this.callbacks.onActivity()
-      return false
-    }
-    this.keyboard.onkeyup = (keysym) => this.client?.sendKeyEvent(0, keysym)
+    this.keyboard = getDocumentKeyboard(this.sdk, this.keyboardInput.ownerDocument).register({
+      isActive: () => this.connected && this.callbacks.isActive(),
+      onkeydown: (keysym) => {
+        this.client?.sendKeyEvent(1, keysym)
+        this.callbacks.onActivity()
+      },
+      onkeyup: (keysym) => this.client?.sendKeyEvent(0, keysym),
+    })
   }
 
   private createClient(connectionID: string, auth: GuacamoleAuthResponse) {
@@ -315,7 +378,7 @@ export class GuacamoleSession implements KeyEventSender {
     this.abortController?.abort()
     this.abortController = undefined
     this.connected = false
-    this.keyboard?.reset()
+    this.keyboard?.release()
 
     const client = this.client
     this.client = undefined
