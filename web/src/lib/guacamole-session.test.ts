@@ -34,6 +34,7 @@ function createSDK() {
 
   class FakeDisplay {
     readonly element = new FakeElement()
+    oncursor: ((canvas: HTMLCanvasElement, x: number, y: number) => void) | null = null
     onresize: (() => void) | null = null
     scaleValue = 0
     cursorShown = false
@@ -74,7 +75,14 @@ function createSDK() {
 
   class FakeMouse {
     listener?: (event: unknown) => void
+    listeners = new Map<string, (event: unknown) => void>()
+    cursor?: [HTMLCanvasElement, number, number]
+    on(type: string, listener: (event: unknown) => void) { this.listeners.set(type, listener) }
     onEach(_types: string[], listener: (event: unknown) => void) { this.listener = listener }
+    setCursor(canvas: HTMLCanvasElement, x: number, y: number) {
+      this.cursor = [canvas, x, y]
+      return true
+    }
   }
   class MouseImpl extends FakeMouse { constructor() { super(); mice.push(this) } }
   class TouchpadImpl extends FakeMouse { constructor() { super(); touchpads.push(this) } }
@@ -211,6 +219,12 @@ describe("Guacamole direct session", () => {
     runtime.keyboards[0].onkeyup?.(0x4e2d)
     expect(client.keyEvents).toContainEqual([1, 0x4e2d])
     expect(client.keyEvents).toContainEqual([0, 0x4e2d])
+
+    const cursor = {} as HTMLCanvasElement
+    client.display.oncursor?.(cursor, 4, 6)
+    expect(runtime.mice[0].cursor).toEqual([cursor, 4, 6])
+    runtime.mice[0].listener?.({ type: "mousemove", state: { x: 1, y: 2 } })
+    expect(client.display.cursorShown).toBe(false)
 
     keyboardInput.value = "软键盘"
     keyboardInput.listeners.get("input")?.(new InputEvent("软键盘") as unknown as Event)

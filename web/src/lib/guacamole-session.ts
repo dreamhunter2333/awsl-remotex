@@ -321,19 +321,26 @@ export class GuacamoleSession implements KeyEventSender {
     const displayElement = display.getElement()
     displayElement.style.position = "absolute"
     displayElement.style.inset = "0 auto auto 0"
+    displayElement.style.cursor = "none"
     this.displaySurface.replaceChildren(displayElement)
 
-    const sendMouse = (event: GuacamoleEvent, focus: boolean) => {
+    let localCursor = false
+    const sendMouse = (event: GuacamoleEvent, focus: boolean, softwareCursor: boolean) => {
       const mouseEvent = event as Mouse.Event
-      display.showCursor(true)
+      display.showCursor(softwareCursor || !localCursor)
       client.sendMouseState(mouseEvent.state, true)
       if (mouseEvent.type !== "mousemove") this.callbacks.onActivity()
       if (focus && mouseEvent.type === "mousedown") this.focus()
     }
     const mouse = new sdk.Mouse(displayElement)
-    mouse.onEach(["mousedown", "mousemove", "mouseup"], (event) => sendMouse(event, true))
+    display.oncursor = (canvas, x, y) => {
+      localCursor = mouse.setCursor(canvas, x, y)
+      if (!localCursor) displayElement.style.cursor = "none"
+    }
+    mouse.onEach(["mousedown", "mousemove", "mouseup"], (event) => sendMouse(event, true, false))
+    mouse.on("mouseout", () => display.showCursor(false))
     const touchpad = new sdk.Mouse.Touchpad(displayElement)
-    touchpad.onEach(["mousedown", "mousemove", "mouseup"], (event) => sendMouse(event, false))
+    touchpad.onEach(["mousedown", "mousemove", "mouseup"], (event) => sendMouse(event, false, true))
 
     client.onclipboard = (stream, mimetype) => {
       if (!mimetype.startsWith("text/")) return
@@ -386,6 +393,7 @@ export class GuacamoleSession implements KeyEventSender {
       client.onclipboard = null
       client.onerror = null
       client.onstatechange = null
+      client.getDisplay().oncursor = null
       client.getDisplay().onresize = null
       client.disconnect()
     }
