@@ -2,98 +2,62 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-A focused browser workspace for SSH, RDP, and VNC. Keep assets in one sidebar, open several remote sessions in tabs, and switch between them without leaving the page.
+A focused browser workspace for SSH, RDP, and VNC. Assets live in one sidebar while multiple remote sessions remain open in tabs.
 
 ![Awsl RemoteX workspace](docs/images/workspace.webp)
 
 ## Highlights
 
-- SSH, RDP, and VNC through Apache Guacamole
-- Multiple live sessions with compact tabs
-- Double-click connection and encrypted automatic login
-- Asset creation, editing, deletion, and connection testing
-- A fully hideable sidebar and responsive remote display
+- SSH, RDP, and VNC through Apache Guacamole 1.6.0
+- Multiple live sessions rendered directly through the official Guacamole SDK and Canvas
+- Asset creation, editing, deletion, connection testing, and encrypted saved credentials
 - Reconnect, disconnect, fullscreen, soft keyboard, and custom key combinations
-- One Half Dark, One Half Light, and system-aware themes
-- English and Chinese interfaces
-- Installable PWA with automatic updates
-- Optional application authentication
-- Local SQLite storage with no external database
+- Responsive layout, installable PWA, automatic updates, English and Chinese UI
+- Optional application authentication and local SQLite storage
 
-Awsl RemoteX is intentionally limited to remote control. It does not include session recording, playback, approval workflows, command auditing, or an internal web proxy.
+Awsl RemoteX intentionally does not include recording, playback, approval workflows, command auditing, or an internal web proxy.
 
-## Getting started
+## Quick start
 
-Create an `.env` file. Replace every example secret before starting the service.
+Docker with Compose v2 is required. Create the environment file and replace all example secrets before starting:
 
-```dotenv
-GUACAMOLE_JSON_SECRET=<output of openssl rand -hex 16>
-CREDENTIAL_KEY=<output of openssl rand -hex 32>
-AUTH_USERNAME=admin
-AUTH_PASSWORD=change-this-password
-GUACAMOLE_SESSION_TIMEOUT_MINUTES=1440
-SESSION_IDLE_TIMEOUT=24h
+```bash
+cp .env.example .env
+openssl rand -hex 16
+openssl rand -hex 32
 ```
 
-`AUTH_USERNAME` defaults to `admin`. `AUTH_PASSWORD` enables application login; leave it empty only when you intentionally want authentication disabled. Use HTTPS whenever the service is reachable beyond a trusted network.
+Use the 32-character output as `GUACAMOLE_JSON_SECRET`, the 64-character output as `CREDENTIAL_KEY`, and set a strong `AUTH_PASSWORD`. Leaving `AUTH_PASSWORD` empty disables application authentication and should only be done on an intentionally trusted network.
 
-Use the following Compose file:
-
-```yaml
-services:
-  awsl-remotex:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/app/data
-    environment:
-      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
-      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
-      CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
-      GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
-      GUACAMOLE_UPSTREAM: http://guacamole:8080
-      GUACD_ADDRESS: guacd:4822
-      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-24h}
-    depends_on:
-      - guacamole
-    restart: unless-stopped
-
-  guacd:
-    image: guacamole/guacd:1.6.0
-    restart: unless-stopped
-
-  guacamole:
-    image: guacamole/guacamole:1.6.0
-    environment:
-      GUACD_HOSTNAME: guacd
-      JSON_ENABLED: "true"
-      JSON_SECRET_KEY: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
-      API_SESSION_TIMEOUT: ${GUACAMOLE_SESSION_TIMEOUT_MINUTES:-1440}
-    depends_on:
-      - guacd
-    restart: unless-stopped
-```
-
-Start the stack and open `http://localhost:8080`:
+Start the source-build stack defined in [compose.yaml](compose.yaml):
 
 ```bash
 docker compose up -d --build
 ```
 
+Open `http://localhost:8080`. Use HTTPS whenever the service is reachable beyond a trusted network.
+
+Published multi-architecture images are available from `ghcr.io/dreamhunter2333/awsl-remotex`. See [Deployment](docs/deployment.md) for image-based installation, reverse-proxy requirements, upgrades, and health checks.
+
 ## Using the workspace
 
 1. Add an SSH, RDP, or VNC asset from the bottom of the sidebar.
-2. Single-click to select an asset or double-click to connect immediately.
-3. Open the asset editor to update, test, or delete the connection.
-4. Switch between active sessions through the tab bar. Session controls remain on its right side.
+2. Single-click to select an asset or double-click to connect.
+3. Open the editor to update, test, or delete a connection.
+4. Switch live sessions through the tab bar; session controls remain on its right.
+
+When an active remote session is connected, page-level keyboard input is routed to that session. Mouse interaction with the surrounding UI remains available. Browser- or operating-system-reserved shortcuts may not be capturable by a web application.
 
 ## Documentation
 
 - [Documentation index](docs/README.md)
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)
+- [Deployment](docs/deployment.md)
+- [Operations and troubleshooting](docs/operations.md)
+- [HTTP API](docs/api.md)
+- [Development and releases](docs/development.md)
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
 
-Saved passwords and private keys are encrypted with AES-256-GCM before being written to SQLite. Asset APIs never return stored credential values.
+Saved passwords and private keys are encrypted with AES-256-GCM before being written to SQLite. Asset APIs never return stored credential values. Preserve `CREDENTIAL_KEY`: encrypted credentials cannot be recovered without it.

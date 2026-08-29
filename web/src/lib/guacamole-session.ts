@@ -134,24 +134,48 @@ interface DocumentKeyboardRegistration {
 }
 
 class DocumentKeyboardRouter {
+  private observer?: MutationObserver
   private readonly owners = new Map<number, DocumentKeyboardTarget>()
   private readonly targets = new Set<DocumentKeyboardTarget>()
 
-  constructor(sdk: GuacamoleSDK, document: Document) {
+  constructor(sdk: GuacamoleSDK, private readonly document: Document) {
     const keyboard = new sdk.Keyboard(document)
-    keyboard.onkeydown = (keysym) => {
+    const onkeydown = (keysym: number) => {
       const target = this.getActiveTarget()
       if (!target) return true
       this.owners.set(keysym, target)
       target.onkeydown(keysym)
       return false
     }
-    keyboard.onkeyup = (keysym) => {
+    const onkeyup = (keysym: number) => {
       const target = this.owners.get(keysym)
       if (!target) return
       this.owners.delete(keysym)
       target.onkeyup(keysym)
     }
+    keyboard.onkeydown = onkeydown
+    keyboard.onkeyup = onkeyup
+
+    let suspended = false
+    const updateSuspension = () => {
+      const next = Boolean(this.document.querySelector("dialog[open]"))
+      if (next === suspended) return
+      suspended = next
+      if (suspended) {
+        keyboard.reset()
+        keyboard.onkeydown = null
+        keyboard.onkeyup = null
+        return
+      }
+      keyboard.onkeydown = onkeydown
+      keyboard.onkeyup = onkeyup
+    }
+    const Observer = document.defaultView?.MutationObserver
+    if (Observer) {
+      this.observer = new Observer(updateSuspension)
+      this.observer.observe(document.documentElement, { attributes: true, attributeFilter: ["open"], subtree: true })
+    }
+    updateSuspension()
   }
 
   register(target: DocumentKeyboardTarget): DocumentKeyboardRegistration {
@@ -174,6 +198,7 @@ class DocumentKeyboardRouter {
   }
 
   private getActiveTarget() {
+    if (this.document.querySelector("dialog[open]")) return
     return [...this.targets].find((target) => target.isActive())
   }
 }

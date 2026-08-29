@@ -9,10 +9,34 @@ import {
   readGuacamoleTicket,
 } from "./guacamole-session"
 
+class FakeDocument {
+  activeElement: FakeElement | null = null
+  readonly documentElement = {}
+  readonly querySelector = vi.fn().mockReturnValue(null)
+  readonly defaultView: { MutationObserver: typeof MutationObserver }
+  private observer?: MutationCallback
+
+  constructor() {
+    const owner = this
+    this.defaultView = {
+      MutationObserver: class {
+        constructor(callback: MutationCallback) { owner.observer = callback }
+        disconnect() {}
+        observe() {}
+        takeRecords() { return [] }
+      },
+    }
+  }
+
+  mutate() {
+    this.observer?.([], {} as MutationObserver)
+  }
+}
+
 class FakeElement {
   clientHeight = 900
   clientWidth = 1600
-  ownerDocument = { activeElement: null as FakeElement | null }
+  ownerDocument = new FakeDocument()
   style: Record<string, string> = {}
   value = ""
   children: unknown[] = []
@@ -69,8 +93,20 @@ function createSDK() {
   class FakeKeyboard {
     onkeydown: ((keysym: number) => boolean) | null = null
     onkeyup: ((keysym: number) => void) | null = null
-    reset = vi.fn()
+    private readonly pressed = new Set<number>()
+    reset = vi.fn(() => {
+      for (const keysym of this.pressed) this.onkeyup?.(keysym)
+      this.pressed.clear()
+    })
     constructor(readonly element: Element) { keyboards.push(this) }
+    press(keysym: number) {
+      this.pressed.add(keysym)
+      return this.onkeydown?.(keysym)
+    }
+    release(keysym: number) {
+      if (!this.pressed.delete(keysym)) return
+      this.onkeyup?.(keysym)
+    }
   }
 
   class FakeMouse {
@@ -215,10 +251,27 @@ describe("Guacamole direct session", () => {
     expect(client.display.scaleValue).toBeCloseTo(5 / 6)
     expect(client.sizes).toEqual([[3200, 1800]])
 
-    runtime.keyboards[0].onkeydown?.(0x4e2d)
-    runtime.keyboards[0].onkeyup?.(0x4e2d)
+    runtime.keyboards[0].press(0x4e2d)
+    runtime.keyboards[0].release(0x4e2d)
     expect(client.keyEvents).toContainEqual([1, 0x4e2d])
     expect(client.keyEvents).toContainEqual([0, 0x4e2d])
+
+    runtime.keyboards[0].press(0xffe3)
+    keyboardInput.ownerDocument.querySelector.mockReturnValue({})
+    expect(runtime.keyboards[0].onkeydown?.(0x61)).toBe(true)
+    expect(client.keyEvents).not.toContainEqual([1, 0x61])
+    keyboardInput.ownerDocument.mutate()
+    expect(runtime.keyboards[0].reset).toHaveBeenCalledOnce()
+    expect(runtime.keyboards[0].onkeydown).toBeNull()
+    expect(runtime.keyboards[0].onkeyup).toBeNull()
+    expect(client.keyEvents).toContainEqual([0, 0xffe3])
+
+    keyboardInput.ownerDocument.querySelector.mockReturnValue(null)
+    keyboardInput.ownerDocument.mutate()
+    runtime.keyboards[0].press(0x61)
+    runtime.keyboards[0].release(0x61)
+    expect(client.keyEvents).toContainEqual([1, 0x61])
+    expect(client.keyEvents).toContainEqual([0, 0x61])
 
     const cursor = {} as HTMLCanvasElement
     client.display.oncursor?.(cursor, 4, 6)
