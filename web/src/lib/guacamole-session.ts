@@ -3,6 +3,9 @@ import type { Client, Event as GuacamoleEvent, Mouse, Status } from "guacamole-c
 import { sendKeyCombination, type KeyEventSender } from "./guacamole-keys"
 import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacamole-sdk"
 
+const CAPS_LOCK_HOLD_MS = 150
+const CAPS_LOCK_KEYSYM = 0xffe5
+
 export interface GuacamoleAuthResponse {
   authToken: string
   dataSource: string
@@ -333,7 +336,10 @@ export class GuacamoleSession implements KeyEventSender {
   }
 
   sendKeys(keys: readonly number[]) {
-    return sendKeyCombination(this.client, keys)
+    const holdMs = keys.includes(CAPS_LOCK_KEYSYM) ? CAPS_LOCK_HOLD_MS : 0
+    const sent = sendKeyCombination(this.client, keys, holdMs)
+    if (sent) this.callbacks.onActivity()
+    return sent
   }
 
   captureKeys(onComplete: (keys: readonly number[]) => void) {

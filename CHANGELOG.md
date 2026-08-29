@@ -2,6 +2,10 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.19 - 2026-08-29
+
+- Held Caps Lock briefly before release so VNC-to-HID targets, including macOS, accept the key press.
+
 ## v0.2.18 - 2026-08-29
 
 - Added recorded and raw-keysym custom key combinations with backward-compatible browser storage.

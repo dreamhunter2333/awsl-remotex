@@ -22,9 +22,13 @@ export interface KeyEventSender {
   sendKeyEvent: (pressed: 0 | 1, keysym: number) => void
 }
 
-export function sendKeyCombination(sender: KeyEventSender | undefined, keys: readonly number[]) {
+export function sendKeyCombination(sender: KeyEventSender | undefined, keys: readonly number[], holdMs = 0) {
   if (!sender || keys.length === 0) return false
   for (const keysym of keys) sender.sendKeyEvent(1, keysym)
-  for (const keysym of [...keys].reverse()) sender.sendKeyEvent(0, keysym)
+  const release = () => {
+    for (const keysym of [...keys].reverse()) sender.sendKeyEvent(0, keysym)
+  }
+  if (holdMs > 0) setTimeout(release, holdMs)
+  else release()
   return true
 }

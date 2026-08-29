@@ -384,6 +384,34 @@ describe("Guacamole direct session", () => {
     expect(client.display.cursorShown).toBe(false)
   })
 
+  it("holds Caps Lock long enough for VNC-to-HID targets", async () => {
+    vi.useFakeTimers()
+    const runtime = createSDK()
+    const activity = vi.fn()
+    const session = new GuacamoleSession(
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLTextAreaElement,
+      { isActive: () => true, onActivity: activity, onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
+      {
+        authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
+        loadSDK: vi.fn().mockResolvedValue(runtime.sdk),
+        revoke: vi.fn().mockResolvedValue(undefined),
+      },
+    )
+
+    await session.connect("Mac Console", "/guacamole/?data=ticket")
+    expect(session.sendKeys([0xffe5])).toBe(true)
+    expect(runtime.clients[0].keyEvents).toEqual([[1, 0xffe5]])
+    vi.advanceTimersByTime(149)
+    expect(runtime.clients[0].keyEvents).toHaveLength(1)
+    vi.advanceTimersByTime(1)
+    expect(runtime.clients[0].keyEvents).toEqual([[1, 0xffe5], [0, 0xffe5]])
+    expect(activity).toHaveBeenCalledOnce()
+    await session.disconnect()
+    vi.useRealTimers()
+  })
+
   it("revokes authentication that resolves after cancellation", async () => {
     const runtime = createSDK()
     let resolveAuth!: (value: { authToken: string; dataSource: string }) => void

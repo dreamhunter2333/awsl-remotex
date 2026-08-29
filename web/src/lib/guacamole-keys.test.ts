@@ -13,4 +13,16 @@ describe("sendKeyCombination", () => {
     expect(sendKeyCombination(undefined, [1])).toBe(false)
     expect(sendKeyCombination({ sendKeyEvent: vi.fn() }, [])).toBe(false)
   })
+
+  it("can hold keys before releasing them", () => {
+    vi.useFakeTimers()
+    const sendKeyEvent = vi.fn()
+    sendKeyCombination({ sendKeyEvent }, [0xffe5], 150)
+    expect(sendKeyEvent.mock.calls).toEqual([[1, 0xffe5]])
+    vi.advanceTimersByTime(149)
+    expect(sendKeyEvent).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(1)
+    expect(sendKeyEvent.mock.calls).toEqual([[1, 0xffe5], [0, 0xffe5]])
+    vi.useRealTimers()
+  })
 })
