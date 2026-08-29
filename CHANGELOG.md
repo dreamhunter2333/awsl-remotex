@@ -2,6 +2,12 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.18 - 2026-08-29
+
+- Added recorded and raw-keysym custom key combinations with backward-compatible browser storage.
+- Added common system combinations and an expandable special-key list.
+- Kept keyboard focus local while operating session controls and prevented stuck remote modifiers when recording.
+
 ## v0.2.17 - 2026-08-29
 
 - Added per-asset VNC server-rendered cursor and wheel-direction settings.

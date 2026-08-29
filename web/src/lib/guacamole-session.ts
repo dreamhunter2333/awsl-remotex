@@ -131,11 +131,19 @@ interface DocumentKeyboardTarget {
 }
 
 interface DocumentKeyboardRegistration {
+  capture: (onComplete: (keys: readonly number[]) => void) => () => void
   release: () => void
   unregister: () => void
 }
 
+interface DocumentKeyboardCapture {
+  keys: number[]
+  pressed: Set<number>
+  onComplete: (keys: readonly number[]) => void
+}
+
 class DocumentKeyboardRouter {
+  private capture?: DocumentKeyboardCapture
   private observer?: MutationObserver
   private readonly owners = new Map<number, DocumentKeyboardTarget>()
   private readonly targets = new Set<DocumentKeyboardTarget>()
@@ -143,6 +151,11 @@ class DocumentKeyboardRouter {
   constructor(sdk: GuacamoleSDK, private readonly document: Document) {
     const keyboard = new sdk.Keyboard(document)
     const onkeydown = (keysym: number) => {
+      if (this.capture) {
+        if (!this.capture.keys.includes(keysym)) this.capture.keys.push(keysym)
+        this.capture.pressed.add(keysym)
+        return false
+      }
       const target = this.getActiveTarget()
       if (!target) return true
       this.owners.set(keysym, target)
@@ -150,6 +163,15 @@ class DocumentKeyboardRouter {
       return false
     }
     const onkeyup = (keysym: number) => {
+      if (this.capture) {
+        const capture = this.capture
+        capture.pressed.delete(keysym)
+        if (capture.pressed.size === 0 && capture.keys.length > 0) {
+          this.capture = undefined
+          capture.onComplete(capture.keys)
+        }
+        return
+      }
       const target = this.owners.get(keysym)
       if (!target) return
       this.owners.delete(keysym)
@@ -183,6 +205,10 @@ class DocumentKeyboardRouter {
   register(target: DocumentKeyboardTarget): DocumentKeyboardRegistration {
     this.targets.add(target)
     return {
+      capture: (onComplete) => {
+        this.releaseAll()
+        return this.captureKeys(onComplete)
+      },
       release: () => this.release(target),
       unregister: () => {
         this.release(target)
@@ -199,8 +225,24 @@ class DocumentKeyboardRouter {
     }
   }
 
+  private releaseAll() {
+    for (const [keysym, target] of this.owners) {
+      this.owners.delete(keysym)
+      target.onkeyup(keysym)
+    }
+  }
+
+  private captureKeys(onComplete: (keys: readonly number[]) => void) {
+    const capture: DocumentKeyboardCapture = { keys: [], pressed: new Set(), onComplete }
+    this.capture = capture
+    return () => {
+      if (this.capture === capture) this.capture = undefined
+    }
+  }
+
   private getActiveTarget() {
     if (this.document.querySelector("dialog[open]")) return
+    if (this.document.activeElement?.closest("[data-local-keyboard]")) return
     return [...this.targets].find((target) => target.isActive())
   }
 }
@@ -292,6 +334,11 @@ export class GuacamoleSession implements KeyEventSender {
 
   sendKeys(keys: readonly number[]) {
     return sendKeyCombination(this.client, keys)
+  }
+
+  captureKeys(onComplete: (keys: readonly number[]) => void) {
+    if (!this.connected) return
+    return this.keyboard?.capture(onComplete)
   }
 
   sendClipboard(text: string) {

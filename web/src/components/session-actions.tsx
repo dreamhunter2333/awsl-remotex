@@ -1,10 +1,10 @@
-import { useRef, useState, type RefObject } from "react"
-import { Command, Keyboard, Maximize2, Minimize2, Plus, Power, RefreshCw, Settings2, X } from "lucide-react"
+import { useEffect, useRef, useState, type RefObject } from "react"
+import { ChevronDown, Command, Keyboard, Maximize2, Minimize2, Plus, Power, RefreshCw, ScanLine, Settings2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { guacamoleKeys } from "@/lib/guacamole-keys"
 import { usePreferences } from "@/lib/preferences"
-import { loadCustomShortcuts, MAX_CUSTOM_SHORTCUTS, parseShortcut, saveCustomShortcuts, type Shortcut } from "@/lib/shortcuts"
+import { loadCustomShortcuts, MAX_CUSTOM_SHORTCUTS, parseShortcut, saveCustomShortcuts, shortcutFromKeysyms, type Shortcut } from "@/lib/shortcuts"
 
 const presetShortcuts: Shortcut[] = [
   { label: "Esc", keys: [guacamoleKeys.escape] },
@@ -12,7 +12,20 @@ const presetShortcuts: Shortcut[] = [
   { label: "Ctrl+C", keys: [guacamoleKeys.control, guacamoleKeys.c] },
   { label: "Ctrl+V", keys: [guacamoleKeys.control, guacamoleKeys.v] },
   { label: "Ctrl+Alt+Del", keys: [guacamoleKeys.control, guacamoleKeys.alt, guacamoleKeys.delete] },
+  { label: "Ctrl+Shift+Esc", keys: [guacamoleKeys.control, guacamoleKeys.shift, guacamoleKeys.escape] },
+  { label: "Alt+Tab", keys: [guacamoleKeys.alt, guacamoleKeys.tab] },
+  { label: "Alt+F4", keys: [guacamoleKeys.alt, guacamoleKeys.f4] },
   { label: "Win", keys: [guacamoleKeys.super] },
+  { label: "Win+L", keys: [guacamoleKeys.super, guacamoleKeys.l] },
+]
+
+const specialShortcuts: Shortcut[] = [
+  { label: "CapsLock", keys: [guacamoleKeys.capsLock] },
+  { label: "NumLock", keys: [guacamoleKeys.numLock] },
+  { label: "ScrollLock", keys: [guacamoleKeys.scrollLock] },
+  { label: "PrintScreen", keys: [guacamoleKeys.printScreen] },
+  { label: "Pause", keys: [guacamoleKeys.pause] },
+  { label: "Menu", keys: [guacamoleKeys.menu] },
 ]
 
 interface SessionActionsProps {
@@ -20,18 +33,25 @@ interface SessionActionsProps {
   fullscreen: boolean
   onKeyboard: () => void
   onSendKeys: (keys: readonly number[]) => void
+  onCaptureKeys: (onComplete: (keys: readonly number[]) => void) => (() => void) | undefined
   onReconnect: () => void
   onFullscreen: () => void
   onDisconnect: () => void
 }
 
-export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onReconnect, onFullscreen, onDisconnect }: SessionActionsProps) {
+export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onCaptureKeys, onReconnect, onFullscreen, onDisconnect }: SessionActionsProps) {
   const { t } = usePreferences()
   const shortcutMenuRef = useRef<HTMLDetailsElement>(null)
   const actionMenuRef = useRef<HTMLDetailsElement>(null)
+  const cancelCaptureRef = useRef<() => void>(undefined)
   const [shortcutInput, setShortcutInput] = useState("")
   const [shortcutError, setShortcutError] = useState("")
   const [customShortcuts, setCustomShortcuts] = useState<Shortcut[]>(loadCustomShortcuts)
+  const customShortcutsRef = useRef(customShortcuts)
+  const [capturing, setCapturing] = useState(false)
+  customShortcutsRef.current = customShortcuts
+
+  useEffect(() => () => cancelCaptureRef.current?.(), [])
 
   const closeMenu = (menu: RefObject<HTMLDetailsElement | null>) => {
     if (menu.current) menu.current.open = false
@@ -44,34 +64,68 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
     onSendKeys(keys)
     closeMenu(shortcutMenuRef)
   }
+  const storeShortcut = (shortcut: Shortcut) => {
+    const current = customShortcutsRef.current
+    if ([...presetShortcuts, ...specialShortcuts, ...current].some((item) => sameShortcut(item, shortcut))) {
+      setShortcutError(t("shortcutExists"))
+      return false
+    }
+    if (current.length >= MAX_CUSTOM_SHORTCUTS) {
+      setShortcutError(t("shortcutLimit"))
+      return false
+    }
+    const next = [...current, shortcut]
+    customShortcutsRef.current = next
+    setCustomShortcuts(next)
+    saveCustomShortcuts(next)
+    setShortcutError("")
+    return true
+  }
   const addShortcut = () => {
     const shortcut = parseShortcut(shortcutInput)
     if (!shortcut) {
       setShortcutError(t("invalidShortcut"))
       return
     }
-    if ([...presetShortcuts, ...customShortcuts].some((item) => item.label.toLowerCase() === shortcut.label.toLowerCase())) {
-      setShortcutError(t("shortcutExists"))
+    if (storeShortcut(shortcut)) setShortcutInput("")
+  }
+  const stopCapture = () => {
+    cancelCaptureRef.current?.()
+    cancelCaptureRef.current = undefined
+    setCapturing(false)
+  }
+  const recordShortcut = () => {
+    if (capturing) {
+      stopCapture()
       return
     }
-    if (customShortcuts.length >= MAX_CUSTOM_SHORTCUTS) {
-      setShortcutError(t("shortcutLimit"))
-      return
-    }
-    const next = [...customShortcuts, shortcut]
-    setCustomShortcuts(next)
-    saveCustomShortcuts(next)
-    setShortcutInput("")
     setShortcutError("")
+    const cancel = onCaptureKeys((keys) => {
+      cancelCaptureRef.current = undefined
+      setCapturing(false)
+      const shortcut = shortcutFromKeysyms(keys)
+      if (!shortcut) {
+        setShortcutError(t("invalidShortcut"))
+        return
+      }
+      storeShortcut(shortcut)
+    })
+    if (!cancel) {
+      setShortcutError(t("shortcutCaptureUnavailable"))
+      return
+    }
+    cancelCaptureRef.current = cancel
+    setCapturing(true)
   }
   const removeShortcut = (label: string) => {
     const next = customShortcuts.filter((shortcut) => shortcut.label !== label)
+    customShortcutsRef.current = next
     setCustomShortcuts(next)
     saveCustomShortcuts(next)
   }
 
   return (
-    <div className="relative flex shrink-0 items-center gap-0.5 border-l border-[var(--border)] px-1">
+    <div data-local-keyboard className="relative flex shrink-0 items-center gap-0.5 border-l border-[var(--border)] px-1">
       <Button className="touch-session-action order-1" variant="ghost" size="icon" disabled={!active} onClick={onKeyboard} aria-label={t("keyboard")} title={t("keyboard")}><Keyboard className="size-3.5" /></Button>
       <div className="order-3 hidden items-center gap-0.5 @[520px]:flex">
         <Button variant="ghost" size="icon" disabled={!active} onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-3.5" /></Button>
@@ -81,6 +135,7 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
 
       <details ref={shortcutMenuRef} className="order-2" onToggle={() => {
         if (shortcutMenuRef.current?.open) closeMenu(actionMenuRef)
+        else stopCapture()
       }}>
         <summary className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--muted)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden" aria-label={t("shortcuts")} title={t("shortcuts")}><Command className="size-3.5" /></summary>
         <div className="absolute right-1 top-[calc(100%+4px)] z-50 max-h-[min(70dvh,420px)] w-56 overflow-y-auto rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] p-1 shadow-lg">
@@ -90,6 +145,14 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
               <button key={shortcut.label} type="button" disabled={!active} onClick={() => runShortcut(shortcut.keys)} className="h-7 rounded-md border border-[var(--border)] px-1.5 text-[10px] text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40">{shortcut.label}</button>
             ))}
           </div>
+          <details className="group mt-1 border-t border-[var(--border)] pt-1">
+            <summary className="flex h-7 cursor-pointer list-none items-center rounded-md px-2 text-[10px] font-medium text-[var(--subtle)] hover:bg-[var(--surface-hover)] [&::-webkit-details-marker]:hidden">{t("specialKeys")}<ChevronDown className="ml-auto size-3 transition-transform group-open:rotate-180" /></summary>
+            <div className="grid grid-cols-2 gap-1 pt-1">
+              {specialShortcuts.map((shortcut) => (
+                <button key={shortcut.label} type="button" disabled={!active} onClick={() => runShortcut(shortcut.keys)} className="h-7 truncate rounded-md border border-[var(--border)] px-1.5 text-[10px] text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40">{shortcut.label}</button>
+              ))}
+            </div>
+          </details>
           {customShortcuts.length > 0 && (
             <div className="mt-1 space-y-1 border-t border-[var(--border)] pt-1">
               {customShortcuts.map((shortcut) => (
@@ -103,9 +166,11 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
           <form className="mt-1 border-t border-[var(--border)] pt-1" onSubmit={(event) => { event.preventDefault(); addShortcut() }}>
             <span className="block px-1 py-1 text-[10px] font-medium text-[var(--subtle)]">{t("customShortcut")}</span>
             <div className="flex gap-1">
-              <input value={shortcutInput} onChange={(event) => { setShortcutInput(event.target.value); setShortcutError("") }} placeholder={t("shortcutPlaceholder")} aria-label={t("customShortcut")} className="h-7 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--input)] px-2 text-[11px] outline-none focus:border-[var(--accent)]" />
-              <button type="submit" aria-label={t("addShortcut")} title={t("addShortcut")} className="grid size-7 shrink-0 place-items-center rounded-md border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]"><Plus className="size-3.5" /></button>
+              <input value={shortcutInput} disabled={capturing} onChange={(event) => { setShortcutInput(event.target.value); setShortcutError("") }} placeholder={t("shortcutPlaceholder")} aria-label={t("customShortcut")} className="h-7 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--input)] px-2 text-[11px] outline-none focus:border-[var(--accent)] disabled:opacity-50" />
+              <button type="button" disabled={!active} aria-pressed={capturing} onClick={recordShortcut} aria-label={t(capturing ? "stopShortcutRecording" : "recordShortcut")} title={t(capturing ? "stopShortcutRecording" : "recordShortcut")} className={capturing ? "grid size-7 shrink-0 animate-pulse place-items-center rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "grid size-7 shrink-0 place-items-center rounded-md border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:opacity-40"}><ScanLine className="size-3.5" /></button>
+              <button type="submit" disabled={capturing} aria-label={t("addShortcut")} title={t("addShortcut")} className="grid size-7 shrink-0 place-items-center rounded-md border border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] disabled:opacity-40"><Plus className="size-3.5" /></button>
             </div>
+            <span className="block px-1 pt-1 text-[9px] leading-3.5 text-[var(--subtle)]">{t(capturing ? "pressShortcutKeys" : "shortcutFormatHint")}</span>
             {shortcutError && <span className="block px-1 pt-1 text-[10px] text-[var(--danger)]">{shortcutError}</span>}
           </form>
         </div>
@@ -123,4 +188,9 @@ export function SessionActions({ active, fullscreen, onKeyboard, onSendKeys, onR
       </details>
     </div>
   )
+}
+
+function sameShortcut(left: Shortcut, right: Shortcut) {
+  return left.label.toLowerCase() === right.label.toLowerCase()
+    || (left.keys.length === right.keys.length && left.keys.every((keysym, index) => keysym === right.keys[index]))
 }

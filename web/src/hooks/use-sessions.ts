@@ -145,6 +145,10 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     handlesRef.current.get(id)?.sendKeys(keys)
   }, [])
 
+  const captureKeys = useCallback((id: string, onComplete: (keys: readonly number[]) => void) => {
+    return handlesRef.current.get(id)?.captureKeys(onComplete)
+  }, [])
+
   const reset = useCallback(() => {
     for (const handle of handlesRef.current.values()) void handle.disconnect()
     handlesRef.current.clear()
@@ -213,6 +217,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     registerHandle,
     showKeyboard,
     sendKeys,
+    captureKeys,
     reset,
   }
 }

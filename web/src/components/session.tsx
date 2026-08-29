@@ -8,6 +8,7 @@ import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
 export interface SessionHandle {
+  captureKeys: (onComplete: (keys: readonly number[]) => void) => (() => void) | undefined
   disconnect: () => Promise<void>
   showKeyboard: () => boolean
   sendKeys: (keys: readonly number[]) => boolean
@@ -74,6 +75,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   failureMessageRef.current = failureMessage
 
   useImperativeHandle(ref, () => ({
+    captureKeys: (onComplete) => controllerRef.current?.captureKeys(onComplete),
     disconnect: () => controllerRef.current?.disconnect() ?? Promise.resolve(),
     showKeyboard: () => controllerRef.current?.focus() ?? false,
     sendKeys: (keys) => controllerRef.current?.sendKeys(keys) ?? false,

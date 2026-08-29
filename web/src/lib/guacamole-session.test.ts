@@ -41,8 +41,10 @@ class FakeElement {
   value = ""
   children: unknown[] = []
   listeners = new Map<string, EventListener>()
+  localKeyboard = false
 
   addEventListener(type: string, listener: EventListener) { this.listeners.set(type, listener) }
+  closest() { return this.localKeyboard ? this : null }
   removeEventListener(type: string) { this.listeners.delete(type) }
   focus() { this.ownerDocument.activeElement = this }
   replaceChildren(...children: unknown[]) { this.children = children }
@@ -272,6 +274,29 @@ describe("Guacamole direct session", () => {
     runtime.keyboards[0].release(0x61)
     expect(client.keyEvents).toContainEqual([1, 0x61])
     expect(client.keyEvents).toContainEqual([0, 0x61])
+
+    const localInput = new FakeElement()
+    localInput.ownerDocument = keyboardInput.ownerDocument
+    localInput.localKeyboard = true
+    localInput.focus()
+    const localKeyEventCount = client.keyEvents.length
+    expect(runtime.keyboards[0].onkeydown?.(0x62)).toBe(true)
+    runtime.keyboards[0].onkeyup?.(0x62)
+    expect(client.keyEvents).toHaveLength(localKeyEventCount)
+    keyboardInput.focus()
+
+    const captured = vi.fn()
+    runtime.keyboards[0].press(0xffe1)
+    expect(session.captureKeys(captured)).toEqual(expect.any(Function))
+    expect(client.keyEvents.at(-1)).toEqual([0, 0xffe1])
+    runtime.keyboards[0].release(0xffe1)
+    const keyEventCount = client.keyEvents.length
+    runtime.keyboards[0].press(0xffe3)
+    runtime.keyboards[0].press(0xffe5)
+    runtime.keyboards[0].release(0xffe5)
+    runtime.keyboards[0].release(0xffe3)
+    expect(captured).toHaveBeenCalledWith([0xffe3, 0xffe5])
+    expect(client.keyEvents).toHaveLength(keyEventCount)
 
     const cursor = {} as HTMLCanvasElement
     client.display.oncursor?.(cursor, 4, 6)

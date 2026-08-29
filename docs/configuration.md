@@ -53,14 +53,16 @@ See [Operations](operations.md) for safe backup and restore procedures.
 
 - Language, theme, sidebar state, open tabs, activity timestamps, and custom key combinations are stored in browser local storage.
 - The soft-keyboard button is visible on detected touch devices. The send-keys menu is available on desktop and touch devices.
+- Custom key combinations can be recorded from the active session, entered by name (`Ctrl+Shift+T`, `CapsLock`), or entered as raw X11 keysyms (`Ctrl+0x1008FF13`). The menu separately lists common special keys.
 - While an active session is connected, the Guacamole keyboard listens at document level and routes capturable page keyboard input to that session. Opening a modal dialog suspends remote keyboard capture so its form controls receive input locally. Mouse clicks on surrounding controls keep their normal behavior.
-- Browser- and operating-system-reserved shortcuts may never reach JavaScript and therefore cannot be forwarded.
+- Browser- and operating-system-reserved shortcuts may not be recordable from the physical keyboard. Add those combinations by name or raw keysym and send them from the menu instead.
 - The PWA checks for updates on registration, foreground return, and every 15 minutes; a new worker activates automatically.
 - On iOS/iPadOS, reinstall an existing PWA if manifest or status-bar metadata changes.
 
 - 语言、主题、侧边栏、已打开 Tab、活动时间和自定义快捷键保存在浏览器本地存储中。
 - 软键盘按钮在检测到触屏设备时显示；发送按键菜单在桌面端和触屏端均可用。
+- 自定义快捷键可以从活动会话直接录制，也可输入名称（`Ctrl+Shift+T`、`CapsLock`）或原始 X11 keysym（`Ctrl+0x1008FF13`）；菜单会单独列出常用特殊键。
 - 活动会话连接后，Guacamole 在文档级监听键盘，并将网页能捕获的输入路由到该会话；打开模态弹窗会暂停远程键盘捕获，使表单控件在本地接收输入。其他控件的鼠标点击行为不变。
-- 浏览器或操作系统保留的快捷键可能不会到达 JavaScript，因此无法转发。
+- 浏览器或操作系统保留的快捷键可能无法从物理键盘录制；可改用按键名称或原始 keysym 添加，再从菜单发送。
 - PWA 会在注册、回到前台以及每 15 分钟检查更新，并自动激活新版本。
 - iOS/iPadOS 的清单或状态栏元数据变化后，应重新安装已有 PWA。

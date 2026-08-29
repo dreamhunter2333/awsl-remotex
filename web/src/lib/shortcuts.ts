@@ -28,6 +28,17 @@ const namedKeys: Record<string, { label: string; keysym: number }> = {
   enter: { label: "Enter", keysym: 0xff0d },
   return: { label: "Enter", keysym: 0xff0d },
   backspace: { label: "Backspace", keysym: 0xff08 },
+  capslock: { label: "CapsLock", keysym: guacamoleKeys.capsLock },
+  "caps lock": { label: "CapsLock", keysym: guacamoleKeys.capsLock },
+  numlock: { label: "NumLock", keysym: guacamoleKeys.numLock },
+  "num lock": { label: "NumLock", keysym: guacamoleKeys.numLock },
+  scrolllock: { label: "ScrollLock", keysym: guacamoleKeys.scrollLock },
+  "scroll lock": { label: "ScrollLock", keysym: guacamoleKeys.scrollLock },
+  printscreen: { label: "PrintScreen", keysym: guacamoleKeys.printScreen },
+  "print screen": { label: "PrintScreen", keysym: guacamoleKeys.printScreen },
+  prtsc: { label: "PrintScreen", keysym: guacamoleKeys.printScreen },
+  pause: { label: "Pause", keysym: guacamoleKeys.pause },
+  menu: { label: "Menu", keysym: guacamoleKeys.menu },
   delete: { label: "Delete", keysym: 0xffff },
   del: { label: "Delete", keysym: 0xffff },
   insert: { label: "Insert", keysym: 0xff63 },
@@ -47,23 +58,24 @@ export function parseShortcut(value: string): Shortcut | undefined {
   if (tokens.length === 0) return undefined
 
   const modifierValues = new Map<number, { label: string; keysym: number; order: number }>()
-  let key: { label: string; keysym: number } | undefined
+  const keys: Array<{ label: string; keysym: number }> = []
   for (const token of tokens) {
     const modifier = modifiers[token]
     if (modifier) {
       modifierValues.set(modifier.keysym, modifier)
       continue
     }
-    if (key) return undefined
-    key = parseKey(token)
+    const key = parseKey(token)
     if (!key) return undefined
+    keys.push(key)
   }
 
   const sortedModifiers = [...modifierValues.values()].sort((left, right) => left.order - right.order)
-  if (!key && sortedModifiers.length !== 1) return undefined
+  const values = [...sortedModifiers, ...keys].filter((item, index, items) => items.findIndex((candidate) => candidate.keysym === item.keysym) === index)
+  if (values.length === 0) return undefined
   return {
-    label: [...sortedModifiers.map((item) => item.label), ...(key ? [key.label] : [])].join("+"),
-    keys: [...sortedModifiers.map((item) => item.keysym), ...(key ? [key.keysym] : [])],
+    label: values.map((item) => item.label).join("+"),
+    keys: values.map((item) => item.keysym),
   }
 }
 
@@ -71,7 +83,7 @@ export function loadCustomShortcuts() {
   try {
     const values = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") as unknown
     if (!Array.isArray(values)) return []
-    return uniqueShortcuts(values.filter((value): value is string => typeof value === "string").map(parseShortcut).filter((value): value is Shortcut => Boolean(value)))
+    return uniqueShortcuts(values.map(readStoredShortcut).filter((value): value is Shortcut => Boolean(value)))
       .slice(0, MAX_CUSTOM_SHORTCUTS)
   } catch {
     return []
@@ -80,7 +92,7 @@ export function loadCustomShortcuts() {
 
 export function saveCustomShortcuts(shortcuts: Shortcut[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts.map((shortcut) => shortcut.label)))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts))
   } catch {
     return
   }
@@ -94,13 +106,48 @@ function parseKey(token: string) {
     return { label: `F${number}`, keysym: 0xffbd + number }
   }
   if (/^[a-z0-9]$/.test(token)) return { label: token.toUpperCase(), keysym: token.charCodeAt(0) }
+  const rawKeysym = /^0x([0-9a-f]{1,8})$/.exec(token)
+  if (rawKeysym) {
+    const keysym = Number.parseInt(rawKeysym[1], 16)
+    if (!isKeysym(keysym)) return undefined
+    return { label: formatKeysym(keysym), keysym }
+  }
   return undefined
+}
+
+export function shortcutFromKeysyms(keys: readonly number[]): Shortcut | undefined {
+  if (keys.length === 0 || keys.some((keysym) => !isKeysym(keysym))) return undefined
+  const uniqueKeys = [...new Set(keys)]
+  return { label: uniqueKeys.map(formatKeysym).join("+"), keys: uniqueKeys }
+}
+
+function formatKeysym(keysym: number) {
+  const modifier = [...Object.values(modifiers), ...Object.values(namedKeys)].find((item) => item.keysym === keysym)
+  if (modifier) return modifier.label
+  if (keysym >= 0xffbe && keysym <= 0xffd5) return `F${keysym - 0xffbd}`
+  if (keysym >= 0x21 && keysym <= 0x7e) return String.fromCodePoint(keysym).toUpperCase()
+  const codepoint = keysym & 0x00ffffff
+  if ((keysym & 0xff000000) === 0x01000000 && codepoint <= 0x10ffff) return String.fromCodePoint(codepoint)
+  return `0x${keysym.toString(16).toUpperCase().padStart(4, "0")}`
+}
+
+function readStoredShortcut(value: unknown) {
+  if (typeof value === "string") return parseShortcut(value)
+  if (!value || typeof value !== "object") return
+  const shortcut = value as Partial<Shortcut>
+  if (typeof shortcut.label !== "string" || shortcut.label.trim() === "" || !Array.isArray(shortcut.keys) || shortcut.keys.length === 0) return
+  if (shortcut.keys.some((keysym) => !isKeysym(keysym))) return
+  return { label: shortcut.label.trim(), keys: shortcut.keys }
+}
+
+function isKeysym(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 0x1fffffff
 }
 
 function uniqueShortcuts(shortcuts: Shortcut[]) {
   const seen = new Set<string>()
   return shortcuts.filter((shortcut) => {
-    const key = shortcut.label.toLowerCase()
+    const key = shortcut.keys.join(",")
     if (seen.has(key)) return false
     seen.add(key)
     return true

@@ -254,6 +254,7 @@ export default function App() {
               fullscreen={fullscreen}
               onKeyboard={() => activeAsset && session.showKeyboard(activeAsset.id)}
               onSendKeys={(keys) => activeAsset && session.sendKeys(activeAsset.id, keys)}
+              onCaptureKeys={(onComplete) => activeAsset ? session.captureKeys(activeAsset.id, onComplete) : undefined}
               onReconnect={() => activeAsset && session.reconnect(activeAsset)}
               onFullscreen={toggleFullscreen}
               onDisconnect={() => activeAsset && session.close(activeAsset.id)}
