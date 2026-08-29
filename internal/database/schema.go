@@ -18,6 +18,7 @@ func (store *Store) initialize(ctx context.Context) error {
 			host TEXT NOT NULL,
 			port INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
 			username TEXT NOT NULL DEFAULT '',
+			settings_json TEXT NOT NULL DEFAULT '{}',
 			credential_type TEXT NOT NULL DEFAULT 'prompt',
 			credential BLOB,
 			created_at TEXT NOT NULL,
@@ -34,7 +35,10 @@ func (store *Store) initialize(ctx context.Context) error {
 	if err := store.ensureColumn(ctx, "credential_type", "TEXT NOT NULL DEFAULT 'prompt'"); err != nil {
 		return err
 	}
-	return store.ensureColumn(ctx, "credential", "BLOB")
+	if err := store.ensureColumn(ctx, "credential", "BLOB"); err != nil {
+		return err
+	}
+	return store.ensureColumn(ctx, "settings_json", "TEXT NOT NULL DEFAULT '{}'")
 }
 
 func (store *Store) ensureColumn(ctx context.Context, name, definition string) error {

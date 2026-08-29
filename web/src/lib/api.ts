@@ -1,6 +1,15 @@
 export type Protocol = "ssh" | "rdp" | "vnc"
 export type CredentialType = "prompt" | "password" | "private-key"
 
+export interface VNCSettings {
+  encodings?: "tight"
+  colorDepth?: 8 | 16 | 24 | 32
+}
+
+export interface AssetSettings {
+  vnc?: VNCSettings
+}
+
 export interface Asset {
   id: string
   name: string
@@ -9,6 +18,7 @@ export interface Asset {
   host: string
   port: number
   username: string
+  settings?: AssetSettings
   credentialType: CredentialType
   credentialConfigured: boolean
   createdAt: string
@@ -22,6 +32,7 @@ export interface AssetInput {
   host: string
   port: number
   username: string
+  settings?: AssetSettings
   credentialType: CredentialType
   password?: string
   privateKey?: string

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react"
-import { Activity, FolderPlus, Trash2, X } from "lucide-react"
+import { Activity, ChevronDown, FolderPlus, SlidersHorizontal, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { api, type Asset, type AssetInput, type ConnectionTest, type CredentialType, type Protocol } from "@/lib/api"
 import { defaultPort, displayGroup } from "@/lib/assets"
 import { usePreferences } from "@/lib/preferences"
@@ -20,6 +21,8 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   const formRef = useRef<HTMLFormElement>(null)
   const [protocol, setProtocol] = useState<Protocol>(asset?.protocol ?? "ssh")
   const [credentialType, setCredentialType] = useState<CredentialType>(asset?.credentialType ?? "prompt")
+  const [customVNCSettings, setCustomVNCSettings] = useState(Boolean(asset?.settings?.vnc))
+  const [vncAdvancedOpen, setVNCAdvancedOpen] = useState(Boolean(asset?.settings?.vnc))
   const [submitting, setSubmitting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ConnectionTest>()
@@ -34,11 +37,18 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const form = event.currentTarget
     setSubmitting(true)
     setError("")
     try {
-      await onSubmit(readInput(event.currentTarget, protocol, credentialType))
-      event.currentTarget.reset()
+      await onSubmit(readInput(form, protocol, credentialType, customVNCSettings))
+      form.reset()
+      if (!asset) {
+        setProtocol("ssh")
+        setCredentialType("prompt")
+        setCustomVNCSettings(false)
+        setVNCAdvancedOpen(false)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("addAssetFailed"))
     } finally {
@@ -52,7 +62,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
     setTesting(true)
     setTestResult(undefined)
     try {
-      setTestResult(await api.testAsset(readInput(form, protocol, credentialType), asset?.id))
+      setTestResult(await api.testAsset(readInput(form, protocol, credentialType, customVNCSettings), asset?.id))
     } catch (reason) {
       setTestResult({ reachable: false, latencyMs: 0, message: reason instanceof Error ? reason.message : t("connectionFailed") })
     } finally {
@@ -117,6 +127,49 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
               <label className="block space-y-1.5"><span className="text-xs text-[var(--muted)]">{t("passphrase")}</span><Input name="passphrase" type="password" autoComplete="new-password" /></label>
             </>
           )}
+          {protocol === "vnc" && (
+            <details open={vncAdvancedOpen} onToggle={(event) => setVNCAdvancedOpen(event.currentTarget.open)} className="group rounded-lg border border-[var(--border)] bg-[var(--background)]">
+              <summary className="flex h-8 cursor-pointer list-none items-center gap-2 px-2.5 text-xs font-medium text-[var(--muted)] marker:content-none">
+                <SlidersHorizontal className="size-3.5" />
+                <span>{t("advancedSettings")}</span>
+                <ChevronDown className="ml-auto size-3.5 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="space-y-3 border-t border-[var(--border)] px-3 py-3">
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <span>
+                    <span className="block text-xs font-medium">{t("customVNCSettings")}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--muted)]">{t("customVNCSettingsHint")}</span>
+                  </span>
+                  <input className="peer sr-only" type="checkbox" checked={customVNCSettings} onChange={(event) => setCustomVNCSettings(event.target.checked)} />
+                  <span className="relative h-5 w-9 shrink-0 rounded-full bg-[var(--border-strong)] transition-colors peer-checked:bg-[var(--accent)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)] peer-focus-visible:ring-offset-2 after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4" />
+                </label>
+                {customVNCSettings && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="space-y-1.5">
+                      <span className="text-[11px] text-[var(--muted)]">{t("vncEncoding")}</span>
+                      <Select name="vncEncodings" defaultValue={asset?.settings?.vnc?.encodings ?? "default"}>
+                        <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">{t("protocolDefault")}</SelectItem>
+                          <SelectItem value="tight">Tight JPEG</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-[11px] text-[var(--muted)]">{t("colorDepth")}</span>
+                      <Select name="vncColorDepth" defaultValue={String(asset?.settings?.vnc?.colorDepth ?? 32)}>
+                        <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">{t("protocolDefault")}</SelectItem>
+                          {[32, 24, 16, 8].map((depth) => <SelectItem key={depth} value={String(depth)}>{t("colorDepthBits", { depth })}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
           {error && <p role="alert" className="text-xs text-[var(--danger)]">{error}</p>}
           {testResult && <p role="status" className={cn("text-xs", testResult.reachable ? "text-[var(--green)]" : "text-[var(--danger)]")}>{testResult.reachable ? t("connectionReachable", { latency: testResult.latencyMs }) : t("connectionUnreachable", { message: testResult.message })}</p>}
         </div>
@@ -137,9 +190,9 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   )
 }
 
-function readInput(form: HTMLFormElement, protocol: Protocol, credentialType: CredentialType): AssetInput {
+function readInput(form: HTMLFormElement, protocol: Protocol, credentialType: CredentialType, customVNCSettings: boolean): AssetInput {
   const values = new FormData(form)
-  return {
+  const input: AssetInput = {
     name: String(values.get("name") || ""),
     group: String(values.get("group") || ""),
     protocol,
@@ -151,4 +204,15 @@ function readInput(form: HTMLFormElement, protocol: Protocol, credentialType: Cr
     privateKey: String(values.get("privateKey") || ""),
     passphrase: String(values.get("passphrase") || ""),
   }
+  if (protocol !== "vnc" || !customVNCSettings) return input
+
+  const encodings = String(values.get("vncEncodings") || "default")
+  const colorDepth = Number(values.get("vncColorDepth"))
+  input.settings = {
+    vnc: {
+      ...(encodings === "tight" ? { encodings } : {}),
+      ...([8, 16, 24, 32].includes(colorDepth) ? { colorDepth: colorDepth as 8 | 16 | 24 | 32 } : {}),
+    },
+  }
+  return input
 }

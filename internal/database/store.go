@@ -48,7 +48,7 @@ func (store *Store) Ping(ctx context.Context) error {
 
 func (store *Store) ListAssets(ctx context.Context) ([]assets.Asset, error) {
 	rows, err := store.db.QueryContext(ctx, `
-		SELECT id, name, group_name, protocol, host, port, username, credential_type,
+		SELECT id, name, group_name, protocol, host, port, username, settings_json, credential_type,
 			CASE WHEN credential IS NOT NULL AND length(credential) > 0 THEN 1 ELSE 0 END,
 			created_at, updated_at
 		FROM assets
@@ -91,16 +91,21 @@ func (store *Store) CreateAsset(ctx context.Context, input assets.Input) (assets
 		Host:                 input.Host,
 		Port:                 input.Port,
 		Username:             input.Username,
+		Settings:             input.Settings,
 		CredentialType:       credentialType,
 		CredentialConfigured: len(encrypted) > 0,
 		CreatedAt:            now,
 		UpdatedAt:            now,
 	}
 
+	settingsJSON, err := encodeSettings(asset.Settings)
+	if err != nil {
+		return assets.Asset{}, err
+	}
 	_, err = store.db.ExecContext(ctx, `
-		INSERT INTO assets (id, name, group_name, protocol, host, port, username, credential_type, credential, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, asset.ID, asset.Name, asset.Group, asset.Protocol, asset.Host, asset.Port, asset.Username, credentialType, encrypted, formatTime(now), formatTime(now))
+		INSERT INTO assets (id, name, group_name, protocol, host, port, username, settings_json, credential_type, credential, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, asset.ID, asset.Name, asset.Group, asset.Protocol, asset.Host, asset.Port, asset.Username, settingsJSON, credentialType, encrypted, formatTime(now), formatTime(now))
 	if err != nil {
 		return assets.Asset{}, fmt.Errorf("create asset: %w", err)
 	}
@@ -125,13 +130,17 @@ func (store *Store) UpdateAsset(ctx context.Context, id string, input assets.Inp
 	if err != nil {
 		return assets.Asset{}, err
 	}
+	settingsJSON, err := encodeSettings(input.Settings)
+	if err != nil {
+		return assets.Asset{}, err
+	}
 
 	now := time.Now().UTC()
 	result, err := store.db.ExecContext(ctx, `
 		UPDATE assets
-		SET name = ?, group_name = ?, protocol = ?, host = ?, port = ?, username = ?, credential_type = ?, credential = ?, updated_at = ?
+		SET name = ?, group_name = ?, protocol = ?, host = ?, port = ?, username = ?, settings_json = ?, credential_type = ?, credential = ?, updated_at = ?
 		WHERE id = ?
-	`, input.Name, input.Group, input.Protocol, input.Host, input.Port, input.Username, credentialType, encrypted, formatTime(now), id)
+	`, input.Name, input.Group, input.Protocol, input.Host, input.Port, input.Username, settingsJSON, credentialType, encrypted, formatTime(now), id)
 	if err != nil {
 		return assets.Asset{}, fmt.Errorf("update asset: %w", err)
 	}
@@ -147,7 +156,7 @@ func (store *Store) UpdateAsset(ctx context.Context, id string, input assets.Inp
 
 func (store *Store) GetAsset(ctx context.Context, id string) (assets.Asset, error) {
 	row := store.db.QueryRowContext(ctx, `
-		SELECT id, name, group_name, protocol, host, port, username, credential_type,
+		SELECT id, name, group_name, protocol, host, port, username, settings_json, credential_type,
 			CASE WHEN credential IS NOT NULL AND length(credential) > 0 THEN 1 ELSE 0 END,
 			created_at, updated_at
 		FROM assets

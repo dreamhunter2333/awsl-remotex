@@ -16,6 +16,7 @@ type Asset struct {
 	Host                 string    `json:"host"`
 	Port                 int       `json:"port"`
 	Username             string    `json:"username"`
+	Settings             Settings  `json:"settings"`
 	CredentialType       string    `json:"credentialType"`
 	CredentialConfigured bool      `json:"credentialConfigured"`
 	CreatedAt            time.Time `json:"createdAt"`
@@ -23,16 +24,26 @@ type Asset struct {
 }
 
 type Input struct {
-	Name           string `json:"name"`
-	Group          string `json:"group"`
-	Protocol       string `json:"protocol"`
-	Host           string `json:"host"`
-	Port           int    `json:"port"`
-	Username       string `json:"username"`
-	CredentialType string `json:"credentialType"`
-	Password       string `json:"password"`
-	PrivateKey     string `json:"privateKey"`
-	Passphrase     string `json:"passphrase"`
+	Name           string   `json:"name"`
+	Group          string   `json:"group"`
+	Protocol       string   `json:"protocol"`
+	Host           string   `json:"host"`
+	Port           int      `json:"port"`
+	Username       string   `json:"username"`
+	Settings       Settings `json:"settings"`
+	CredentialType string   `json:"credentialType"`
+	Password       string   `json:"password"`
+	PrivateKey     string   `json:"privateKey"`
+	Passphrase     string   `json:"passphrase"`
+}
+
+type Settings struct {
+	VNC *VNCSettings `json:"vnc,omitempty"`
+}
+
+type VNCSettings struct {
+	Encodings  string `json:"encodings,omitempty"`
+	ColorDepth int    `json:"colorDepth,omitempty"`
 }
 
 func (input *Input) Normalize() error {
@@ -66,6 +77,26 @@ func (input *Input) Normalize() error {
 	}
 	if input.CredentialType == "private-key" && input.Protocol != "ssh" {
 		return errors.New("private-key credentials are only supported for SSH")
+	}
+	if input.Protocol != "vnc" {
+		input.Settings.VNC = nil
+		return nil
+	}
+	if input.Settings.VNC == nil {
+		return nil
+	}
+
+	input.Settings.VNC.Encodings = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Encodings))
+	if input.Settings.VNC.Encodings != "" && input.Settings.VNC.Encodings != "tight" {
+		return errors.New("VNC encodings must be tight")
+	}
+	switch input.Settings.VNC.ColorDepth {
+	case 0, 8, 16, 24, 32:
+	default:
+		return errors.New("VNC colorDepth must be 8, 16, 24, or 32")
+	}
+	if input.Settings.VNC.Encodings == "" && input.Settings.VNC.ColorDepth == 0 {
+		input.Settings.VNC = nil
 	}
 	return nil
 }

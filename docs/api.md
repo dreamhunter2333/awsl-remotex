@@ -26,6 +26,7 @@ Writable requests use:
   "host": "10.10.2.18",
   "port": 22,
   "username": "operator",
+  "settings": {},
   "credentialType": "password",
   "password": "secret"
 }
@@ -37,6 +38,8 @@ Writable requests use:
 - `private-key` requests use `privateKey` and optional `passphrase`.
 - On update, blank secret fields preserve an existing credential when its type is unchanged. Switching to `prompt` removes it.
 - Responses never include credential plaintext; they expose `credentialType` and `credentialConfigured`.
+- VNC assets may opt into `settings.vnc.encodings` (`tight`) and `settings.vnc.colorDepth` (`8`, `16`, `24`, or `32`). Omit `settings.vnc` to use Guacamole defaults. / VNC 资产可按需设置 `settings.vnc.encodings`（`tight`）和 `settings.vnc.colorDepth`（`8`、`16`、`24` 或 `32`）；省略 `settings.vnc` 时使用 Guacamole 默认值。
+- Because updates replace the full asset, preserve the returned `settings` value unless the override should be removed. / 更新会完整替换资产；除非需要删除覆盖参数，否则应保留响应中的 `settings`。
 
 ## Asset endpoints / 资产接口
 

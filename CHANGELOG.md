@@ -2,6 +2,11 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.16 - 2026-08-29
+
+- Added optional per-asset VNC encoding and color-depth settings for servers requiring Tight JPEG.
+- Kept Guacamole VNC defaults unchanged unless the override is explicitly enabled.
+
 ## v0.2.15 - 2026-08-29
 
 - Documentation synchronized with the direct Guacamole SDK architecture and current operations.

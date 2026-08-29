@@ -96,6 +96,14 @@ func ConnectionParameters(asset assets.Asset, credential credential.Value, theme
 		parameters["ignore-cert"] = "true"
 		parameters["resize-method"] = "display-update"
 	}
+	if asset.Protocol == "vnc" && asset.Settings.VNC != nil {
+		if asset.Settings.VNC.Encodings != "" {
+			parameters["encodings"] = asset.Settings.VNC.Encodings
+		}
+		if asset.Settings.VNC.ColorDepth != 0 {
+			parameters["color-depth"] = strconv.Itoa(asset.Settings.VNC.ColorDepth)
+		}
+	}
 	if asset.Protocol == "ssh" {
 		parameters["font-name"] = "DejaVu Sans Mono"
 		parameters["font-size"] = "11"

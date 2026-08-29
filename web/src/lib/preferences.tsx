@@ -83,6 +83,13 @@ const messages = {
     privateKeyPlaceholder: "粘贴 OpenSSH 私钥",
     privateKeyHint: "粘贴 OpenSSH 私钥；留空则保留现有私钥",
     passphrase: "私钥口令",
+    advancedSettings: "高级设置",
+    customVNCSettings: "使用自定义 VNC 参数",
+    customVNCSettingsHint: "仅在目标服务需要指定编码时启用",
+    vncEncoding: "编码",
+    colorDepth: "色深",
+    colorDepthBits: "{depth} 位",
+    protocolDefault: "协议默认值",
   },
   en: {
     language: "Language",
@@ -166,6 +173,13 @@ const messages = {
     privateKeyPlaceholder: "Paste an OpenSSH private key",
     privateKeyHint: "Paste an OpenSSH private key; leave blank to keep the saved key",
     passphrase: "Key passphrase",
+    advancedSettings: "Advanced settings",
+    customVNCSettings: "Use custom VNC parameters",
+    customVNCSettingsHint: "Enable only when the server requires a specific encoding",
+    vncEncoding: "Encoding",
+    colorDepth: "Color depth",
+    colorDepthBits: "{depth}-bit",
+    protocolDefault: "Protocol default",
   },
 } as const
 

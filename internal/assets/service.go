@@ -101,6 +101,7 @@ func (service *Service) TestInput(ctx context.Context, id string, input Input) e
 		Host:           input.Host,
 		Port:           input.Port,
 		Username:       input.Username,
+		Settings:       input.Settings,
 		CredentialType: input.CredentialType,
 	}, value)
 }

@@ -23,6 +23,7 @@ Assets use this complete writable shape:
   "host": "10.10.2.18",
   "port": 22,
   "username": "operator",
+  "settings": {},
   "credentialType": "password",
   "password": "secret"
 }
@@ -31,6 +32,8 @@ Assets use this complete writable shape:
 `protocol` must be `ssh`, `rdp`, or `vnc`. An empty group becomes the localized default group. Ports default to 22, 3389, and 5900 respectively when omitted or zero.
 
 `credentialType` must be `prompt`, `password`, or `private-key`; `private-key` is only valid for SSH. Password credentials use `password`. Private-key credentials use `privateKey` and optional `passphrase`. Never print credentials. List responses expose only `credentialType` and `credentialConfigured`, not the stored secret. On update, blank secret fields preserve the existing credential when its type is unchanged; changing to `prompt` removes it.
+
+VNC assets may explicitly override Guacamole defaults with `"settings":{"vnc":{"encodings":"tight","colorDepth":32}}`. `colorDepth` accepts 8, 16, 24, or 32. Omit `settings.vnc` when no override is required. Since update is a full replacement, preserve the listed asset's `settings` value unless the user explicitly asks to remove the override.
 
 - List: `GET /api/assets`
 - Create: `POST /api/assets` with the complete writable shape
