@@ -108,6 +108,8 @@ export function classifyGuacamoleFailure(reason: unknown): GuacamoleFailure {
 
 interface GuacamoleSessionCallbacks {
   isActive: () => boolean
+  isRemoteCursor?: () => boolean
+  isWheelReversed?: () => boolean
   onActivity: () => void
   onDisplayResize: () => void
   onEnded: (failure: GuacamoleFailure) => void
@@ -350,15 +352,37 @@ export class GuacamoleSession implements KeyEventSender {
     this.displaySurface.replaceChildren(displayElement)
 
     let localCursor = false
+    const sendMouseState = (state: Mouse.State) => {
+      if (!this.callbacks.isWheelReversed?.() || state.up === state.down) {
+        client.sendMouseState(state, true)
+        return
+      }
+      const { up, down } = state
+      try {
+        state.up = down
+        state.down = up
+        client.sendMouseState(state, true)
+      } finally {
+        state.up = up
+        state.down = down
+      }
+    }
     const sendMouse = (event: GuacamoleEvent, focus: boolean, softwareCursor: boolean) => {
       const mouseEvent = event as Mouse.Event
-      display.showCursor(softwareCursor || !localCursor)
-      client.sendMouseState(mouseEvent.state, true)
+      const remoteCursor = this.callbacks.isRemoteCursor?.() ?? false
+      display.showCursor(!remoteCursor && (softwareCursor || !localCursor))
+      sendMouseState(mouseEvent.state)
       if (mouseEvent.type !== "mousemove") this.callbacks.onActivity()
       if (focus && mouseEvent.type === "mousedown") this.focus()
     }
     const mouse = new sdk.Mouse(displayElement)
     display.oncursor = (canvas, x, y) => {
+      if (this.callbacks.isRemoteCursor?.()) {
+        localCursor = false
+        displayElement.style.cursor = "none"
+        display.showCursor(false)
+        return
+      }
       localCursor = mouse.setCursor(canvas, x, y)
       if (!localCursor) displayElement.style.cursor = "none"
     }

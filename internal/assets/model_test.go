@@ -7,12 +7,14 @@ func TestNormalizeVNCSettings(t *testing.T) {
 		Name:     "console",
 		Protocol: "vnc",
 		Host:     "127.0.0.1",
-		Settings: Settings{VNC: &VNCSettings{Encodings: " TIGHT ", ColorDepth: 32}},
+		Settings: Settings{VNC: &VNCSettings{
+			Encodings: " TIGHT ", ColorDepth: 32, Cursor: " REMOTE ", WheelDirection: " REVERSE ",
+		}},
 	}
 	if err := input.Normalize(); err != nil {
 		t.Fatal(err)
 	}
-	if input.Settings.VNC == nil || input.Settings.VNC.Encodings != "tight" {
+	if input.Settings.VNC == nil || input.Settings.VNC.Encodings != "tight" || input.Settings.VNC.Cursor != "remote" || input.Settings.VNC.WheelDirection != "reverse" {
 		t.Fatalf("unexpected VNC settings: %#v", input.Settings.VNC)
 	}
 }

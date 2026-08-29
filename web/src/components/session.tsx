@@ -44,6 +44,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   const keyboardInputRef = useRef<HTMLTextAreaElement>(null)
   const controllerRef = useRef<GuacamoleSession>(null)
   const activeRef = useRef(active)
+  const vncSettingsRef = useRef(asset.settings?.vnc)
   const onSessionEndedRef = useRef(onSessionEnded)
   const onReadyRef = useRef(onReady)
   const onActivityRef = useRef(onActivity)
@@ -100,6 +101,8 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
 
     const controller = new GuacamoleSession(displayHost, displaySurface, keyboardInput, {
       isActive: () => activeRef.current,
+      isRemoteCursor: () => vncSettingsRef.current?.cursor === "remote",
+      isWheelReversed: () => vncSettingsRef.current?.wheelDirection === "reverse",
       onActivity: () => onActivityRef.current(),
       onDisplayResize: notifyResize,
       onEnded: (failure) => {
@@ -128,6 +131,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
 
   useEffect(() => {
     setFrameReady(false)
+    vncSettingsRef.current = asset.settings?.vnc
     const controller = controllerRef.current
     if (!controller || !connectionURL) {
       void controller?.disconnect()

@@ -33,7 +33,7 @@ Assets use this complete writable shape:
 
 `credentialType` must be `prompt`, `password`, or `private-key`; `private-key` is only valid for SSH. Password credentials use `password`. Private-key credentials use `privateKey` and optional `passphrase`. Never print credentials. List responses expose only `credentialType` and `credentialConfigured`, not the stored secret. On update, blank secret fields preserve the existing credential when its type is unchanged; changing to `prompt` removes it.
 
-VNC assets may explicitly override Guacamole defaults with `"settings":{"vnc":{"encodings":"tight","colorDepth":32}}`. `colorDepth` accepts 8, 16, 24, or 32. Omit `settings.vnc` when no override is required. Since update is a full replacement, preserve the listed asset's `settings` value unless the user explicitly asks to remove the override.
+VNC assets may explicitly override defaults with `"settings":{"vnc":{"encodings":"tight","colorDepth":32,"cursor":"remote","wheelDirection":"reverse"}}`. `colorDepth` accepts 8, 16, 24, or 32. `cursor` accepts `remote`; `wheelDirection` accepts `reverse`. Omit fields that do not need overrides, and omit `settings.vnc` when no override is required. Since update is a full replacement, preserve the listed asset's `settings` value unless the user explicitly asks to remove the override.
 
 - List: `GET /api/assets`
 - Create: `POST /api/assets` with the complete writable shape

@@ -42,8 +42,10 @@ type Settings struct {
 }
 
 type VNCSettings struct {
-	Encodings  string `json:"encodings,omitempty"`
-	ColorDepth int    `json:"colorDepth,omitempty"`
+	Encodings      string `json:"encodings,omitempty"`
+	ColorDepth     int    `json:"colorDepth,omitempty"`
+	Cursor         string `json:"cursor,omitempty"`
+	WheelDirection string `json:"wheelDirection,omitempty"`
 }
 
 func (input *Input) Normalize() error {
@@ -87,6 +89,8 @@ func (input *Input) Normalize() error {
 	}
 
 	input.Settings.VNC.Encodings = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Encodings))
+	input.Settings.VNC.Cursor = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Cursor))
+	input.Settings.VNC.WheelDirection = strings.ToLower(strings.TrimSpace(input.Settings.VNC.WheelDirection))
 	if input.Settings.VNC.Encodings != "" && input.Settings.VNC.Encodings != "tight" {
 		return errors.New("VNC encodings must be tight")
 	}
@@ -95,7 +99,13 @@ func (input *Input) Normalize() error {
 	default:
 		return errors.New("VNC colorDepth must be 8, 16, 24, or 32")
 	}
-	if input.Settings.VNC.Encodings == "" && input.Settings.VNC.ColorDepth == 0 {
+	if input.Settings.VNC.Cursor != "" && input.Settings.VNC.Cursor != "remote" {
+		return errors.New("VNC cursor must be remote")
+	}
+	if input.Settings.VNC.WheelDirection != "" && input.Settings.VNC.WheelDirection != "reverse" {
+		return errors.New("VNC wheelDirection must be reverse")
+	}
+	if input.Settings.VNC.Encodings == "" && input.Settings.VNC.ColorDepth == 0 && input.Settings.VNC.Cursor == "" && input.Settings.VNC.WheelDirection == "" {
 		input.Settings.VNC = nil
 	}
 	return nil

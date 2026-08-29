@@ -12,11 +12,17 @@ func TestConnectionParametersVNCOverrides(t *testing.T) {
 		Protocol: "vnc",
 		Host:     "127.0.0.1",
 		Port:     5900,
-		Settings: assets.Settings{VNC: &assets.VNCSettings{Encodings: "tight", ColorDepth: 32}},
+		Settings: assets.Settings{VNC: &assets.VNCSettings{Encodings: "tight", ColorDepth: 32, Cursor: "remote", WheelDirection: "reverse"}},
 	}
 	parameters := ConnectionParameters(asset, credential.Value{}, "dark")
 	if parameters["encodings"] != "tight" || parameters["color-depth"] != "32" {
 		t.Fatalf("unexpected VNC parameters: %#v", parameters)
+	}
+	if parameters["cursor"] != "remote" {
+		t.Fatalf("unexpected VNC cursor parameter: %#v", parameters)
+	}
+	if _, exists := parameters["wheel-direction"]; exists {
+		t.Fatalf("wheel direction must remain a browser-only setting: %#v", parameters)
 	}
 }
 
@@ -28,5 +34,8 @@ func TestConnectionParametersVNCDefaults(t *testing.T) {
 	}
 	if _, exists := parameters["color-depth"]; exists {
 		t.Fatalf("unexpected VNC color depth override: %#v", parameters)
+	}
+	if _, exists := parameters["cursor"]; exists {
+		t.Fatalf("unexpected VNC cursor override: %#v", parameters)
 	}
 }

@@ -38,7 +38,7 @@ Writable requests use:
 - `private-key` requests use `privateKey` and optional `passphrase`.
 - On update, blank secret fields preserve an existing credential when its type is unchanged. Switching to `prompt` removes it.
 - Responses never include credential plaintext; they expose `credentialType` and `credentialConfigured`.
-- VNC assets may opt into `settings.vnc.encodings` (`tight`) and `settings.vnc.colorDepth` (`8`, `16`, `24`, or `32`). Omit `settings.vnc` to use Guacamole defaults. / VNC 资产可按需设置 `settings.vnc.encodings`（`tight`）和 `settings.vnc.colorDepth`（`8`、`16`、`24` 或 `32`）；省略 `settings.vnc` 时使用 Guacamole 默认值。
+- VNC assets may opt into `settings.vnc.encodings` (`tight`), `settings.vnc.colorDepth` (`8`, `16`, `24`, or `32`), `settings.vnc.cursor` (`remote`), and `settings.vnc.wheelDirection` (`reverse`). Wheel direction is applied in the browser. Omit `settings.vnc` to keep all defaults. / VNC 资产可按需设置 `settings.vnc.encodings`（`tight`）、`settings.vnc.colorDepth`（`8`、`16`、`24` 或 `32`）、`settings.vnc.cursor`（`remote`）和 `settings.vnc.wheelDirection`（`reverse`）。滚轮方向由浏览器处理；省略 `settings.vnc` 时保留全部默认行为。
 - Because updates replace the full asset, preserve the returned `settings` value unless the override should be removed. / 更新会完整替换资产；除非需要删除覆盖参数，否则应保留响应中的 `settings`。
 
 ## Asset endpoints / 资产接口

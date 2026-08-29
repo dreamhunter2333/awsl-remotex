@@ -86,7 +86,7 @@ function createSDK() {
     disconnect() { this.disconnected = true }
     getDisplay() { return this.display }
     sendKeyEvent(pressed: number, keysym: number) { this.keyEvents.push([pressed, keysym]) }
-    sendMouseState(state: unknown) { this.mouseStates.push(state) }
+    sendMouseState(state: unknown) { this.mouseStates.push({ ...state as object }) }
     sendSize(width: number, height: number) { this.sizes.push([width, height]) }
   }
 
@@ -285,7 +285,7 @@ describe("Guacamole direct session", () => {
 
     const scrollState = { x: 10, y: 20, up: true, down: false }
     runtime.touchpads[0].listener?.({ type: "mouseup", state: scrollState })
-    expect(client.mouseStates.at(-1)).toBe(scrollState)
+    expect(client.mouseStates.at(-1)).toEqual(scrollState)
     expect(client.display.cursorShown).toBe(true)
 
     const paste = { clipboardData: { getData: () => "本地剪贴板" }, preventDefault: vi.fn() } as unknown as ClipboardEvent
@@ -324,6 +324,39 @@ describe("Guacamole direct session", () => {
     runtime.clients[0].onstatechange?.(5)
     expect(ended).toHaveBeenCalledOnce()
     expect(ended).toHaveBeenCalledWith("certificate")
+  })
+
+  it("supports per-session remote cursor rendering and reversed wheel direction", async () => {
+    const runtime = createSDK()
+    const session = new GuacamoleSession(
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLTextAreaElement,
+      {
+        isActive: () => true,
+        isRemoteCursor: () => true,
+        isWheelReversed: () => true,
+        onActivity: vi.fn(),
+        onDisplayResize: vi.fn(),
+        onEnded: vi.fn(),
+        onReady: vi.fn(),
+      },
+      {
+        authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
+        loadSDK: vi.fn().mockResolvedValue(runtime.sdk),
+        revoke: vi.fn().mockResolvedValue(undefined),
+      },
+    )
+
+    await session.connect("Mac Console", "/guacamole/?data=ticket")
+    const client = runtime.clients[0]
+    client.display.oncursor?.({} as HTMLCanvasElement, 4, 6)
+    expect(runtime.mice[0].cursor).toBeUndefined()
+    expect(client.display.cursorShown).toBe(false)
+
+    runtime.mice[0].listener?.({ type: "mouseup", state: { x: 10, y: 20, up: true, down: false } })
+    expect(client.mouseStates.at(-1)).toEqual({ x: 10, y: 20, up: false, down: true })
+    expect(client.display.cursorShown).toBe(false)
   })
 
   it("revokes authentication that resolves after cancellation", async () => {

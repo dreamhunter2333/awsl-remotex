@@ -157,11 +157,31 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
                     </label>
                     <label className="space-y-1.5">
                       <span className="text-[11px] text-[var(--muted)]">{t("colorDepth")}</span>
-                      <Select name="vncColorDepth" defaultValue={String(asset?.settings?.vnc?.colorDepth ?? 32)}>
+                      <Select name="vncColorDepth" defaultValue={String(asset?.settings?.vnc?.colorDepth ?? "default")}>
                         <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="default">{t("protocolDefault")}</SelectItem>
                           {[32, 24, 16, 8].map((depth) => <SelectItem key={depth} value={String(depth)}>{t("colorDepthBits", { depth })}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-[11px] text-[var(--muted)]">{t("cursorRendering")}</span>
+                      <Select name="vncCursor" defaultValue={asset?.settings?.vnc?.cursor ?? "default"}>
+                        <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">{t("protocolDefault")}</SelectItem>
+                          <SelectItem value="remote">{t("serverRenderedCursor")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-[11px] text-[var(--muted)]">{t("wheelDirection")}</span>
+                      <Select name="vncWheelDirection" defaultValue={asset?.settings?.vnc?.wheelDirection ?? "default"}>
+                        <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">{t("normalWheelDirection")}</SelectItem>
+                          <SelectItem value="reverse">{t("reverseWheelDirection")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </label>
@@ -208,10 +228,14 @@ function readInput(form: HTMLFormElement, protocol: Protocol, credentialType: Cr
 
   const encodings = String(values.get("vncEncodings") || "default")
   const colorDepth = Number(values.get("vncColorDepth"))
+  const cursor = String(values.get("vncCursor") || "default")
+  const wheelDirection = String(values.get("vncWheelDirection") || "default")
   input.settings = {
     vnc: {
       ...(encodings === "tight" ? { encodings } : {}),
       ...([8, 16, 24, 32].includes(colorDepth) ? { colorDepth: colorDepth as 8 | 16 | 24 | 32 } : {}),
+      ...(cursor === "remote" ? { cursor } : {}),
+      ...(wheelDirection === "reverse" ? { wheelDirection } : {}),
     },
   }
   return input

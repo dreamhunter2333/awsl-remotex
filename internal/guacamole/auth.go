@@ -103,6 +103,9 @@ func ConnectionParameters(asset assets.Asset, credential credential.Value, theme
 		if asset.Settings.VNC.ColorDepth != 0 {
 			parameters["color-depth"] = strconv.Itoa(asset.Settings.VNC.ColorDepth)
 		}
+		if asset.Settings.VNC.Cursor != "" {
+			parameters["cursor"] = asset.Settings.VNC.Cursor
+		}
 	}
 	if asset.Protocol == "ssh" {
 		parameters["font-name"] = "DejaVu Sans Mono"

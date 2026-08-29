@@ -2,6 +2,11 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.17 - 2026-08-29
+
+- Added per-asset VNC server-rendered cursor and wheel-direction settings.
+- Kept existing cursor and scrolling behavior unchanged for assets without overrides.
+
 ## v0.2.16 - 2026-08-29
 
 - Added optional per-asset VNC encoding and color-depth settings for servers requiring Tight JPEG.

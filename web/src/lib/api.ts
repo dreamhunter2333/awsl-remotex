@@ -4,6 +4,8 @@ export type CredentialType = "prompt" | "password" | "private-key"
 export interface VNCSettings {
   encodings?: "tight"
   colorDepth?: 8 | 16 | 24 | 32
+  cursor?: "remote"
+  wheelDirection?: "reverse"
 }
 
 export interface AssetSettings {
