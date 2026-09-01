@@ -12,7 +12,6 @@ import {
 class FakeDocument {
   activeElement: FakeElement | null = null
   readonly documentElement = {}
-  readonly listeners = new Map<string, EventListener>()
   readonly querySelector = vi.fn().mockReturnValue(null)
   readonly defaultView: { MutationObserver: typeof MutationObserver }
   private observer?: MutationCallback
@@ -32,8 +31,6 @@ class FakeDocument {
   mutate() {
     this.observer?.([], {} as MutationObserver)
   }
-
-  addEventListener(type: string, listener: EventListener) { this.listeners.set(type, listener) }
 }
 
 class FakeElement {
@@ -170,7 +167,6 @@ describe("Guacamole direct session", () => {
       readonly type = "compositionend"
       constructor(readonly data: string) {}
     })
-    vi.stubGlobal("navigator", { platform: "MacIntel" })
   })
 
   it("reads the encrypted JSON ticket from the legacy connection URL", () => {
@@ -317,18 +313,6 @@ describe("Guacamole direct session", () => {
     expect(client.mouseStates.at(-1)).toEqual(scrollState)
     expect(client.display.cursorShown).toBe(true)
 
-    const paste = { clipboardData: { getData: () => "本地剪贴板" }, preventDefault: vi.fn() } as unknown as ClipboardEvent
-    keyboardInput.ownerDocument.listeners.get("paste")?.(paste)
-    expect(runtime.writers.at(-1)).toMatchObject({ text: "本地剪贴板", ended: true })
-    expect(paste.preventDefault).toHaveBeenCalledOnce()
-
-    localInput.focus()
-    const localPaste = { clipboardData: { getData: () => "本地输入" }, preventDefault: vi.fn() } as unknown as ClipboardEvent
-    keyboardInput.ownerDocument.listeners.get("paste")?.(localPaste)
-    expect(runtime.writers).toHaveLength(1)
-    expect(localPaste.preventDefault).not.toHaveBeenCalled()
-    keyboardInput.focus()
-
     client.onclipboard?.({}, "text/plain")
     runtime.readers[0].ontext?.("远程")
     runtime.readers[0].ontext?.("剪贴板")
@@ -342,10 +326,10 @@ describe("Guacamole direct session", () => {
     expect(ended).not.toHaveBeenCalled()
   })
 
-  it("syncs the Mac clipboard before sending remote Ctrl+V", async () => {
+  it("syncs the local clipboard without injecting a paste shortcut", async () => {
     const runtime = createSDK()
     const keyboardInput = new FakeElement()
-    const readClipboard = vi.fn().mockResolvedValue("Mac 本地剪贴板")
+    const readClipboard = vi.fn().mockResolvedValue("本机剪贴板")
     const session = new GuacamoleSession(
       new FakeElement() as unknown as HTMLElement,
       new FakeElement() as unknown as HTMLElement,
@@ -359,29 +343,18 @@ describe("Guacamole direct session", () => {
       },
     )
 
-    await session.connect("Mac Paste", "/guacamole/?data=ticket")
+    await session.connect("Clipboard Sync", "/guacamole/?data=ticket")
     runtime.clients[0].onstatechange?.(3)
-    const paste = {
-      altKey: false,
-      ctrlKey: true,
-      key: "v",
-      metaKey: false,
-      preventDefault: vi.fn(),
-      repeat: false,
-      shiftKey: false,
-      stopImmediatePropagation: vi.fn(),
-    } as unknown as KeyboardEvent
-    keyboardInput.ownerDocument.listeners.get("keydown")?.(paste)
-
-    await vi.waitFor(() => {
-      expect(runtime.writers.at(-1)).toMatchObject({ text: "Mac 本地剪贴板", ended: true })
-      expect(runtime.clients[0].keyEvents).toEqual([[1, 0xffe3], [1, 0x76], [0, 0x76], [0, 0xffe3]])
-    })
-    expect(paste.preventDefault).toHaveBeenCalledOnce()
-    expect(paste.stopImmediatePropagation).toHaveBeenCalledOnce()
-
-    keyboardInput.ownerDocument.listeners.get("keydown")?.({ ...paste, repeat: true } as KeyboardEvent)
+    await session.syncClipboard()
+    expect(runtime.writers.at(-1)).toMatchObject({ text: "本机剪贴板", ended: true })
+    expect(runtime.clients[0].keyEvents).toEqual([])
     expect(readClipboard).toHaveBeenCalledOnce()
+
+    runtime.keyboards[0].press(0xffe3)
+    runtime.keyboards[0].press(0x76)
+    runtime.keyboards[0].release(0x76)
+    runtime.keyboards[0].release(0xffe3)
+    expect(runtime.clients[0].keyEvents).toEqual([[1, 0xffe3], [1, 0x76], [0, 0x76], [0, 0xffe3]])
     await session.disconnect()
   })
 

@@ -145,8 +145,12 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
 
   useEffect(() => {
     if (!active || !frameReady) return
+    const syncClipboard = () => void controllerRef.current?.syncClipboard()
     notifyResizeRef.current()
+    syncClipboard()
     controllerRef.current?.focus()
+    window.addEventListener("focus", syncClipboard)
+    return () => window.removeEventListener("focus", syncClipboard)
   }, [active, frameReady])
 
   return (

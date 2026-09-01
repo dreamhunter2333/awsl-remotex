@@ -5,8 +5,6 @@ import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacam
 
 const CAPS_LOCK_HOLD_MS = 150
 const CAPS_LOCK_KEYSYM = 0xffe5
-const CONTROL_KEYSYM = 0xffe3
-const V_KEYSYM = 0x76
 
 export interface GuacamoleAuthResponse {
   authToken: string
@@ -130,15 +128,13 @@ interface GuacamoleSessionDependencies {
   writeClipboard?: (text: string) => Promise<void>
 }
 
-interface DocumentInputTarget {
+interface DocumentKeyboardTarget {
   isActive: () => boolean
   onkeydown: (keysym: number) => void
-  onMacPaste: () => void
-  onpaste: (text: string) => boolean
   onkeyup: (keysym: number) => void
 }
 
-interface DocumentInputRegistration {
+interface DocumentKeyboardRegistration {
   capture: (onComplete: (keys: readonly number[]) => void) => () => void
   release: () => void
   unregister: () => void
@@ -150,24 +146,13 @@ interface DocumentKeyboardCapture {
   onComplete: (keys: readonly number[]) => void
 }
 
-class DocumentInputRouter {
+class DocumentKeyboardRouter {
   private capture?: DocumentKeyboardCapture
   private observer?: MutationObserver
-  private readonly owners = new Map<number, DocumentInputTarget>()
-  private readonly targets = new Set<DocumentInputTarget>()
+  private readonly owners = new Map<number, DocumentKeyboardTarget>()
+  private readonly targets = new Set<DocumentKeyboardTarget>()
 
   constructor(sdk: GuacamoleSDK, private readonly document: Document) {
-    const macPlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
-    document.addEventListener("keydown", (event) => {
-      if (!macPlatform || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== "v") return
-      const target = this.getActiveTarget()
-      if (!target) return
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      if (event.repeat) return
-      target.onMacPaste()
-    }, true)
-
     const keyboard = new sdk.Keyboard(document)
     const onkeydown = (keysym: number) => {
       if (this.capture) {
@@ -198,13 +183,6 @@ class DocumentInputRouter {
     }
     keyboard.onkeydown = onkeydown
     keyboard.onkeyup = onkeyup
-    document.addEventListener("paste", (event) => {
-      const target = this.getActiveTarget()
-      const text = event.clipboardData?.getData("text/plain") ?? ""
-      if (!target || !text || !target.onpaste(text)) return
-      event.preventDefault()
-    })
-
     let suspended = false
     const updateSuspension = () => {
       const next = Boolean(this.document.querySelector("dialog[open]"))
@@ -227,7 +205,7 @@ class DocumentInputRouter {
     updateSuspension()
   }
 
-  register(target: DocumentInputTarget): DocumentInputRegistration {
+  register(target: DocumentKeyboardTarget): DocumentKeyboardRegistration {
     this.targets.add(target)
     return {
       capture: (onComplete) => {
@@ -242,7 +220,7 @@ class DocumentInputRouter {
     }
   }
 
-  private release(target: DocumentInputTarget) {
+  private release(target: DocumentKeyboardTarget) {
     for (const [keysym, owner] of this.owners) {
       if (owner !== target) continue
       this.owners.delete(keysym)
@@ -272,14 +250,14 @@ class DocumentInputRouter {
   }
 }
 
-const documentInputs = new WeakMap<Document, DocumentInputRouter>()
+const documentKeyboards = new WeakMap<Document, DocumentKeyboardRouter>()
 
-function getDocumentInput(sdk: GuacamoleSDK, document: Document) {
-  const existing = documentInputs.get(document)
+function getDocumentKeyboard(sdk: GuacamoleSDK, document: Document) {
+  const existing = documentKeyboards.get(document)
   if (existing) return existing
-  const input = new DocumentInputRouter(sdk, document)
-  documentInputs.set(document, input)
-  return input
+  const keyboard = new DocumentKeyboardRouter(sdk, document)
+  documentKeyboards.set(document, keyboard)
+  return keyboard
 }
 
 export class GuacamoleSession implements KeyEventSender {
@@ -287,7 +265,7 @@ export class GuacamoleSession implements KeyEventSender {
   private client?: Client
   private connected = false
   private generation = 0
-  private keyboard?: DocumentInputRegistration
+  private keyboard?: DocumentKeyboardRegistration
   private reported = false
   private sdk?: GuacamoleSDK
   private token = ""
@@ -351,6 +329,16 @@ export class GuacamoleSession implements KeyEventSender {
     return this.keyboardInput.ownerDocument.activeElement === this.keyboardInput
   }
 
+  async syncClipboard() {
+    if (!this.connected || !this.callbacks.isActive()) return
+    const read = this.dependencies.readClipboard ?? (() => navigator.clipboard?.readText() ?? Promise.reject(new Error("Clipboard API is unavailable")))
+    try {
+      this.sendClipboard(await read())
+    } catch {
+      return
+    }
+  }
+
   sendKeyEvent(pressed: 0 | 1, keysym: number) {
     this.client?.sendKeyEvent(pressed, keysym)
   }
@@ -368,7 +356,7 @@ export class GuacamoleSession implements KeyEventSender {
   }
 
   sendClipboard(text: string) {
-    if (!this.client || !this.sdk || !text) return false
+    if (!this.client || !this.sdk) return false
     const writer = new this.sdk.StringWriter(this.client.createClipboardStream("text/plain"))
     writer.sendText(text)
     writer.sendEnd()
@@ -399,14 +387,12 @@ export class GuacamoleSession implements KeyEventSender {
 
   private ensureKeyboard() {
     if (this.keyboard || !this.sdk) return
-    this.keyboard = getDocumentInput(this.sdk, this.keyboardInput.ownerDocument).register({
+    this.keyboard = getDocumentKeyboard(this.sdk, this.keyboardInput.ownerDocument).register({
       isActive: () => this.connected && this.callbacks.isActive(),
       onkeydown: (keysym) => {
         this.client?.sendKeyEvent(1, keysym)
         this.callbacks.onActivity()
       },
-      onMacPaste: () => this.pasteMacClipboard(),
-      onpaste: (text) => this.sendClipboard(text),
       onkeyup: (keysym) => this.client?.sendKeyEvent(0, keysym),
     })
   }
@@ -531,14 +517,6 @@ export class GuacamoleSession implements KeyEventSender {
   private writeClipboard(text: string) {
     const write = this.dependencies.writeClipboard ?? ((value: string) => navigator.clipboard?.writeText(value) ?? Promise.resolve())
     return write(text).catch(() => undefined)
-  }
-
-  private pasteMacClipboard() {
-    const read = this.dependencies.readClipboard ?? (() => navigator.clipboard?.readText() ?? Promise.reject(new Error("Clipboard API is unavailable")))
-    void read()
-      .then((text) => { if (text) this.sendClipboard(text) })
-      .catch(() => undefined)
-      .then(() => this.sendKeys([CONTROL_KEYSYM, V_KEYSYM]))
   }
 
   private readonly clearInput = (event: Event) => {
