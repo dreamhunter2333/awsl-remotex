@@ -12,6 +12,7 @@ import {
 class FakeDocument {
   activeElement: FakeElement | null = null
   readonly documentElement = {}
+  readonly listeners = new Map<string, EventListener>()
   readonly querySelector = vi.fn().mockReturnValue(null)
   readonly defaultView: { MutationObserver: typeof MutationObserver }
   private observer?: MutationCallback
@@ -31,6 +32,8 @@ class FakeDocument {
   mutate() {
     this.observer?.([], {} as MutationObserver)
   }
+
+  addEventListener(type: string, listener: EventListener) { this.listeners.set(type, listener) }
 }
 
 class FakeElement {
@@ -314,8 +317,16 @@ describe("Guacamole direct session", () => {
     expect(client.display.cursorShown).toBe(true)
 
     const paste = { clipboardData: { getData: () => "本地剪贴板" }, preventDefault: vi.fn() } as unknown as ClipboardEvent
-    keyboardInput.listeners.get("paste")?.(paste)
+    keyboardInput.ownerDocument.listeners.get("paste")?.(paste)
     expect(runtime.writers.at(-1)).toMatchObject({ text: "本地剪贴板", ended: true })
+    expect(paste.preventDefault).toHaveBeenCalledOnce()
+
+    localInput.focus()
+    const localPaste = { clipboardData: { getData: () => "本地输入" }, preventDefault: vi.fn() } as unknown as ClipboardEvent
+    keyboardInput.ownerDocument.listeners.get("paste")?.(localPaste)
+    expect(runtime.writers).toHaveLength(1)
+    expect(localPaste.preventDefault).not.toHaveBeenCalled()
+    keyboardInput.focus()
 
     client.onclipboard?.({}, "text/plain")
     runtime.readers[0].ontext?.("远程")

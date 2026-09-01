@@ -127,13 +127,14 @@ interface GuacamoleSessionDependencies {
   writeClipboard?: (text: string) => Promise<void>
 }
 
-interface DocumentKeyboardTarget {
+interface DocumentInputTarget {
   isActive: () => boolean
   onkeydown: (keysym: number) => void
+  onpaste: (text: string) => boolean
   onkeyup: (keysym: number) => void
 }
 
-interface DocumentKeyboardRegistration {
+interface DocumentInputRegistration {
   capture: (onComplete: (keys: readonly number[]) => void) => () => void
   release: () => void
   unregister: () => void
@@ -145,11 +146,11 @@ interface DocumentKeyboardCapture {
   onComplete: (keys: readonly number[]) => void
 }
 
-class DocumentKeyboardRouter {
+class DocumentInputRouter {
   private capture?: DocumentKeyboardCapture
   private observer?: MutationObserver
-  private readonly owners = new Map<number, DocumentKeyboardTarget>()
-  private readonly targets = new Set<DocumentKeyboardTarget>()
+  private readonly owners = new Map<number, DocumentInputTarget>()
+  private readonly targets = new Set<DocumentInputTarget>()
 
   constructor(sdk: GuacamoleSDK, private readonly document: Document) {
     const keyboard = new sdk.Keyboard(document)
@@ -182,6 +183,12 @@ class DocumentKeyboardRouter {
     }
     keyboard.onkeydown = onkeydown
     keyboard.onkeyup = onkeyup
+    document.addEventListener("paste", (event) => {
+      const target = this.getActiveTarget()
+      const text = event.clipboardData?.getData("text/plain") ?? ""
+      if (!target || !text || !target.onpaste(text)) return
+      event.preventDefault()
+    })
 
     let suspended = false
     const updateSuspension = () => {
@@ -205,7 +212,7 @@ class DocumentKeyboardRouter {
     updateSuspension()
   }
 
-  register(target: DocumentKeyboardTarget): DocumentKeyboardRegistration {
+  register(target: DocumentInputTarget): DocumentInputRegistration {
     this.targets.add(target)
     return {
       capture: (onComplete) => {
@@ -220,7 +227,7 @@ class DocumentKeyboardRouter {
     }
   }
 
-  private release(target: DocumentKeyboardTarget) {
+  private release(target: DocumentInputTarget) {
     for (const [keysym, owner] of this.owners) {
       if (owner !== target) continue
       this.owners.delete(keysym)
@@ -250,14 +257,14 @@ class DocumentKeyboardRouter {
   }
 }
 
-const documentKeyboards = new WeakMap<Document, DocumentKeyboardRouter>()
+const documentInputs = new WeakMap<Document, DocumentInputRouter>()
 
-function getDocumentKeyboard(sdk: GuacamoleSDK, document: Document) {
-  const existing = documentKeyboards.get(document)
+function getDocumentInput(sdk: GuacamoleSDK, document: Document) {
+  const existing = documentInputs.get(document)
   if (existing) return existing
-  const keyboard = new DocumentKeyboardRouter(sdk, document)
-  documentKeyboards.set(document, keyboard)
-  return keyboard
+  const input = new DocumentInputRouter(sdk, document)
+  documentInputs.set(document, input)
+  return input
 }
 
 export class GuacamoleSession implements KeyEventSender {
@@ -265,7 +272,7 @@ export class GuacamoleSession implements KeyEventSender {
   private client?: Client
   private connected = false
   private generation = 0
-  private keyboard?: DocumentKeyboardRegistration
+  private keyboard?: DocumentInputRegistration
   private reported = false
   private sdk?: GuacamoleSDK
   private token = ""
@@ -277,7 +284,6 @@ export class GuacamoleSession implements KeyEventSender {
     private readonly callbacks: GuacamoleSessionCallbacks,
     private readonly dependencies: GuacamoleSessionDependencies = {},
   ) {
-    this.keyboardInput.addEventListener("paste", this.onPaste)
     this.keyboardInput.addEventListener("keypress", this.clearInput)
     this.keyboardInput.addEventListener("compositionend", this.clearInput)
     this.keyboardInput.addEventListener("input", this.clearInput)
@@ -317,7 +323,6 @@ export class GuacamoleSession implements KeyEventSender {
   }
 
   async dispose() {
-    this.keyboardInput.removeEventListener("paste", this.onPaste)
     this.keyboardInput.removeEventListener("keypress", this.clearInput)
     this.keyboardInput.removeEventListener("compositionend", this.clearInput)
     this.keyboardInput.removeEventListener("input", this.clearInput)
@@ -379,12 +384,13 @@ export class GuacamoleSession implements KeyEventSender {
 
   private ensureKeyboard() {
     if (this.keyboard || !this.sdk) return
-    this.keyboard = getDocumentKeyboard(this.sdk, this.keyboardInput.ownerDocument).register({
+    this.keyboard = getDocumentInput(this.sdk, this.keyboardInput.ownerDocument).register({
       isActive: () => this.connected && this.callbacks.isActive(),
       onkeydown: (keysym) => {
         this.client?.sendKeyEvent(1, keysym)
         this.callbacks.onActivity()
       },
+      onpaste: (text) => this.sendClipboard(text),
       onkeyup: (keysym) => this.client?.sendKeyEvent(0, keysym),
     })
   }
@@ -509,12 +515,6 @@ export class GuacamoleSession implements KeyEventSender {
   private writeClipboard(text: string) {
     const write = this.dependencies.writeClipboard ?? ((value: string) => navigator.clipboard?.writeText(value) ?? Promise.resolve())
     return write(text).catch(() => undefined)
-  }
-
-  private readonly onPaste = (event: ClipboardEvent) => {
-    const text = event.clipboardData?.getData("text/plain") ?? ""
-    if (!text || !this.sendClipboard(text)) return
-    event.preventDefault()
   }
 
   private readonly clearInput = (event: Event) => {

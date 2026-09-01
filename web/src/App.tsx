@@ -179,6 +179,7 @@ export default function App() {
             <label className="flex h-7.5 min-w-0 flex-1 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-2 transition focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent-soft)]">
               <Search className="size-3.5 shrink-0 text-[var(--subtle)]" />
               <input
+                data-local-keyboard
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--foreground)] outline-none placeholder:text-[var(--subtle)]"
