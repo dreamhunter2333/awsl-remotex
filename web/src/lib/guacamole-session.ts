@@ -5,6 +5,8 @@ import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacam
 
 const CAPS_LOCK_HOLD_MS = 150
 const CAPS_LOCK_KEYSYM = 0xffe5
+const CONTROL_KEYSYM = 0xffe3
+const V_KEYSYM = 0x76
 
 export interface GuacamoleAuthResponse {
   authToken: string
@@ -123,6 +125,7 @@ interface GuacamoleSessionDependencies {
   authenticate?: typeof authenticateGuacamole
   loadSDK?: typeof loadGuacamoleSDK
   pixelRatio?: () => number
+  readClipboard?: () => Promise<string>
   revoke?: typeof revokeGuacamoleSession
   writeClipboard?: (text: string) => Promise<void>
 }
@@ -130,6 +133,7 @@ interface GuacamoleSessionDependencies {
 interface DocumentInputTarget {
   isActive: () => boolean
   onkeydown: (keysym: number) => void
+  onMacPaste: () => void
   onpaste: (text: string) => boolean
   onkeyup: (keysym: number) => void
 }
@@ -153,6 +157,17 @@ class DocumentInputRouter {
   private readonly targets = new Set<DocumentInputTarget>()
 
   constructor(sdk: GuacamoleSDK, private readonly document: Document) {
+    const macPlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+    document.addEventListener("keydown", (event) => {
+      if (!macPlatform || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== "v") return
+      const target = this.getActiveTarget()
+      if (!target) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (event.repeat) return
+      target.onMacPaste()
+    }, true)
+
     const keyboard = new sdk.Keyboard(document)
     const onkeydown = (keysym: number) => {
       if (this.capture) {
@@ -390,6 +405,7 @@ export class GuacamoleSession implements KeyEventSender {
         this.client?.sendKeyEvent(1, keysym)
         this.callbacks.onActivity()
       },
+      onMacPaste: () => this.pasteMacClipboard(),
       onpaste: (text) => this.sendClipboard(text),
       onkeyup: (keysym) => this.client?.sendKeyEvent(0, keysym),
     })
@@ -515,6 +531,14 @@ export class GuacamoleSession implements KeyEventSender {
   private writeClipboard(text: string) {
     const write = this.dependencies.writeClipboard ?? ((value: string) => navigator.clipboard?.writeText(value) ?? Promise.resolve())
     return write(text).catch(() => undefined)
+  }
+
+  private pasteMacClipboard() {
+    const read = this.dependencies.readClipboard ?? (() => navigator.clipboard?.readText() ?? Promise.reject(new Error("Clipboard API is unavailable")))
+    void read()
+      .then((text) => { if (text) this.sendClipboard(text) })
+      .catch(() => undefined)
+      .then(() => this.sendKeys([CONTROL_KEYSYM, V_KEYSYM]))
   }
 
   private readonly clearInput = (event: Event) => {

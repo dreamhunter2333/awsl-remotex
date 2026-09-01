@@ -170,6 +170,7 @@ describe("Guacamole direct session", () => {
       readonly type = "compositionend"
       constructor(readonly data: string) {}
     })
+    vi.stubGlobal("navigator", { platform: "MacIntel" })
   })
 
   it("reads the encrypted JSON ticket from the legacy connection URL", () => {
@@ -339,6 +340,49 @@ describe("Guacamole direct session", () => {
     expect(client.disconnected).toBe(true)
     expect(revoke).toHaveBeenCalledWith("token")
     expect(ended).not.toHaveBeenCalled()
+  })
+
+  it("syncs the Mac clipboard before sending remote Ctrl+V", async () => {
+    const runtime = createSDK()
+    const keyboardInput = new FakeElement()
+    const readClipboard = vi.fn().mockResolvedValue("Mac 本地剪贴板")
+    const session = new GuacamoleSession(
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLElement,
+      keyboardInput as unknown as HTMLTextAreaElement,
+      { isActive: () => true, onActivity: vi.fn(), onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
+      {
+        authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
+        loadSDK: vi.fn().mockResolvedValue(runtime.sdk),
+        readClipboard,
+        revoke: vi.fn().mockResolvedValue(undefined),
+      },
+    )
+
+    await session.connect("Mac Paste", "/guacamole/?data=ticket")
+    runtime.clients[0].onstatechange?.(3)
+    const paste = {
+      altKey: false,
+      ctrlKey: true,
+      key: "v",
+      metaKey: false,
+      preventDefault: vi.fn(),
+      repeat: false,
+      shiftKey: false,
+      stopImmediatePropagation: vi.fn(),
+    } as unknown as KeyboardEvent
+    keyboardInput.ownerDocument.listeners.get("keydown")?.(paste)
+
+    await vi.waitFor(() => {
+      expect(runtime.writers.at(-1)).toMatchObject({ text: "Mac 本地剪贴板", ended: true })
+      expect(runtime.clients[0].keyEvents).toEqual([[1, 0xffe3], [1, 0x76], [0, 0x76], [0, 0xffe3]])
+    })
+    expect(paste.preventDefault).toHaveBeenCalledOnce()
+    expect(paste.stopImmediatePropagation).toHaveBeenCalledOnce()
+
+    keyboardInput.ownerDocument.listeners.get("keydown")?.({ ...paste, repeat: true } as KeyboardEvent)
+    expect(readClipboard).toHaveBeenCalledOnce()
+    await session.disconnect()
   })
 
   it("reports a protocol error once and differentiates the cause", async () => {
