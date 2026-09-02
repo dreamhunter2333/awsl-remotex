@@ -12,6 +12,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   const [connectionURLs, setConnectionURLs] = useState<Record<string, string>>({})
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({})
   const [connectingIDs, setConnectingIDs] = useState<Set<string>>(() => new Set())
+  const [connectedIDs, setConnectedIDs] = useState<Set<string>>(() => new Set())
   const [idleClosed, setIdleClosed] = useState("")
   const sessionsRef = useRef<string[]>([])
   const activeRef = useRef<string | undefined>(undefined)
@@ -58,8 +59,19 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     readyResolversRef.current.delete(id)
   }, [])
 
+  const setConnected = useCallback((id: string, value: boolean) => {
+    setConnectedIDs((current) => {
+      if (current.has(id) === value) return current
+      const next = new Set(current)
+      if (value) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
+
   const connect = useCallback((asset: Asset) => {
     if (connectingRef.current.has(asset.id)) return
+    setConnected(asset.id, false)
     setConnecting(asset.id, true)
     const generation = generationsRef.current.get(asset.id) ?? 0
     queueRef.current = queueRef.current.then(async () => {
@@ -86,7 +98,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
         setConnecting(asset.id, false)
       }
     })
-  }, [connectionFailed, setConnecting, updateURLs])
+  }, [connectionFailed, setConnected, setConnecting, updateURLs])
 
   const close = useCallback((id: string) => {
     generationsRef.current.set(id, (generationsRef.current.get(id) ?? 0) + 1)
@@ -104,9 +116,11 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     updateURLs((urls) => omitKey(urls, id))
     setConnectionErrors((errors) => omitKey(errors, id))
     delete activityRef.current[id]
-  }, [resolveReady, updateSessions, updateURLs])
+    setConnected(id, false)
+  }, [resolveReady, setConnected, updateSessions, updateURLs])
 
   const reconnect = useCallback((asset: Asset) => {
+    setConnected(asset.id, false)
     generationsRef.current.set(asset.id, (generationsRef.current.get(asset.id) ?? 0) + 1)
     resolveReady(asset.id)
     void handlesRef.current.get(asset.id)?.disconnect()
@@ -116,7 +130,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
       return
     }
     connect(asset)
-  }, [connect, resolveReady, updateURLs])
+  }, [connect, resolveReady, setConnected, updateURLs])
 
   const open = useCallback((asset: Asset) => {
     const next = sessionsRef.current.includes(asset.id) ? sessionsRef.current : [...sessionsRef.current, asset.id]
@@ -126,11 +140,17 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   }, [connect, setActiveSession, updateSessions])
 
   const ended = useCallback((id: string, message = sessionEnded) => {
+    setConnected(id, false)
     resolveReady(id)
     void handlesRef.current.get(id)?.disconnect()
     updateURLs((current) => omitKey(current, id))
     setConnectionErrors((current) => ({ ...current, [id]: message }))
-  }, [resolveReady, sessionEnded, updateURLs])
+  }, [resolveReady, sessionEnded, setConnected, updateURLs])
+
+  const readySession = useCallback((id: string) => {
+    setConnected(id, true)
+    resolveReady(id)
+  }, [resolveReady, setConnected])
 
   const registerHandle = useCallback((id: string, handle: SessionHandle | null) => {
     if (handle) handlesRef.current.set(id, handle)
@@ -145,6 +165,14 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     handlesRef.current.get(id)?.sendKeys(keys)
   }, [])
 
+  const sendClipboard = useCallback((id: string, text: string) => {
+    return handlesRef.current.get(id)?.sendClipboard(text) ?? false
+  }, [])
+
+  const syncClipboard = useCallback((id: string) => {
+    return handlesRef.current.get(id)?.syncClipboard() ?? Promise.resolve()
+  }, [])
+
   const captureKeys = useCallback((id: string, onComplete: (keys: readonly number[]) => void) => {
     return handlesRef.current.get(id)?.captureKeys(onComplete)
   }, [])
@@ -157,6 +185,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     setActiveSessionState(undefined)
     updateURLs(() => ({}))
     setConnectionErrors({})
+    setConnectedIDs(new Set())
     activityRef.current = {}
     clearSessions()
   }, [updateSessions, updateURLs])
@@ -206,17 +235,20 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     connectionURLs,
     connectionErrors,
     connectingIDs,
+    connectedIDs,
     idleClosed,
     clearIdleClosed: () => setIdleClosed(""),
     open,
     close,
     reconnect,
     ended,
-    ready: resolveReady,
+    ready: readySession,
     activity: markActivity,
     registerHandle,
     showKeyboard,
+    sendClipboard,
     sendKeys,
+    syncClipboard,
     captureKeys,
     reset,
   }

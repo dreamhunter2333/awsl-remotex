@@ -4,6 +4,7 @@ import { LogOut, PanelLeftClose, PanelLeftOpen, Plus, Search, X } from "lucide-r
 import { AssetButton } from "@/components/asset-button"
 import { AssetDialog } from "@/components/asset-dialog"
 import { LoadingScreen, LoginScreen } from "@/components/auth-screens"
+import { ClipboardDialog } from "@/components/clipboard-dialog"
 import { GitHubMark } from "@/components/icons/github-mark"
 import { PreferenceControls } from "@/components/preference-controls"
 import { SessionActions } from "@/components/session-actions"
@@ -11,6 +12,7 @@ import { SessionViewport } from "@/components/session"
 import { Button } from "@/components/ui/button"
 import { api, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
 import { displayGroup, protocolMeta } from "@/lib/assets"
+import type { ClipboardDirection } from "@/lib/guacamole-session"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 import { useSessions } from "@/hooks/use-sessions"
@@ -29,6 +31,9 @@ export default function App() {
     () => localStorage.getItem("awsl-remotex.sidebar") === "collapsed" || (localStorage.getItem("awsl-remotex.sidebar") === null && window.matchMedia("(max-width: 639px)").matches),
   )
   const [fullscreen, setFullscreen] = useState(false)
+  const [clipboardOpen, setClipboardOpen] = useState(false)
+  const [sessionClipboards, setSessionClipboards] = useState<Record<string, string>>({})
+  const [clipboardToast, setClipboardToast] = useState<{ message: string; succeeded: boolean }>()
   const sessionLayoutRef = useRef<HTMLElement>(null)
   const session = useSessions(
     assets,
@@ -60,6 +65,12 @@ export default function App() {
     localStorage.setItem("awsl-remotex.sidebar", sidebarCollapsed ? "collapsed" : "expanded")
   }, [sidebarCollapsed])
 
+  useEffect(() => {
+    if (!clipboardToast) return
+    const timer = window.setTimeout(() => setClipboardToast(undefined), 2500)
+    return () => window.clearTimeout(timer)
+  }, [clipboardToast])
+
   const groups = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const visibleAssets = normalized
@@ -75,6 +86,8 @@ export default function App() {
   }, [assets, query])
 
   const activeAsset = assets.find((asset) => asset.id === session.activeSession)
+  const activeConnected = Boolean(activeAsset && session.connectedIDs.has(activeAsset.id))
+  const activeConnecting = Boolean(activeAsset && session.connectingIDs.has(activeAsset.id))
 
   const closeDialog = () => {
     setDialogOpen(false)
@@ -129,6 +142,14 @@ export default function App() {
       return
     }
     await sessionLayoutRef.current?.requestFullscreen()
+  }
+
+  const showClipboardToast = (sessionID: string, direction: ClipboardDirection, succeeded: boolean, text?: string) => {
+    if (text !== undefined) setSessionClipboards((current) => ({ ...current, [sessionID]: text }))
+    const message = succeeded
+      ? t(direction === "local-to-remote" ? "clipboardToRemote" : "clipboardToLocal")
+      : t(direction === "local-to-remote" ? "clipboardToRemoteFailed" : "clipboardToLocalFailed")
+    setClipboardToast({ message, succeeded })
   }
 
   if (!authStatus) {
@@ -252,7 +273,13 @@ export default function App() {
             </div>
             <SessionActions
               active={Boolean(activeAsset)}
+              connected={activeConnected}
+              connecting={activeConnecting}
               fullscreen={fullscreen}
+              onClipboard={() => {
+                setClipboardOpen(true)
+                if (activeAsset) void session.syncClipboard(activeAsset.id)
+              }}
               onKeyboard={() => activeAsset && session.showKeyboard(activeAsset.id)}
               onSendKeys={(keys) => activeAsset && session.sendKeys(activeAsset.id, keys)}
               onCaptureKeys={(onComplete) => activeAsset ? session.captureKeys(activeAsset.id, onComplete) : undefined}
@@ -279,11 +306,31 @@ export default function App() {
                     onSessionEnded={(message) => session.ended(id, message)}
                     onReady={() => session.ready(id)}
                     onActivity={() => session.activity(id)}
+                    onClipboard={(direction, succeeded, text) => showClipboardToast(id, direction, succeeded, text)}
                   />
                 </div>
               )
             })}
           </div>
+          <ClipboardDialog
+            open={clipboardOpen && activeConnected}
+            text={activeAsset ? sessionClipboards[activeAsset.id] ?? "" : ""}
+            notification={clipboardToast}
+            onChange={(text) => {
+              if (!activeAsset) return
+              setSessionClipboards((current) => ({ ...current, [activeAsset.id]: text }))
+              session.sendClipboard(activeAsset.id, text)
+            }}
+            onClose={() => setClipboardOpen(false)}
+          />
+          {clipboardToast && !(clipboardOpen && activeConnected) && (
+            <div role={clipboardToast.succeeded ? "status" : "alert"} className={cn(
+              "fixed bottom-[calc(.75rem+env(safe-area-inset-bottom))] left-1/2 z-50 -translate-x-1/2 rounded-lg border bg-[var(--surface)] px-3 py-2 text-xs shadow-lg",
+              clipboardToast.succeeded ? "border-[var(--green)] text-[var(--foreground)]" : "border-[var(--danger)] text-[var(--danger)]",
+            )}>
+              {clipboardToast.message}
+            </div>
+          )}
         </main>
       </div>
 

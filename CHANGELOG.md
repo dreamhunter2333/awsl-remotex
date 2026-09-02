@@ -2,6 +2,12 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.24 - 2026-09-03
+
+- Added event-driven bidirectional clipboard synchronization with success and failure notifications.
+- Added a live clipboard dialog that keeps keyboard input local while open.
+- Disabled connection-dependent session controls until the remote session is ready.
+
 ## v0.2.19 - 2026-08-29
 
 - Held Caps Lock briefly before release so VNC-to-HID targets, including macOS, accept the key press.

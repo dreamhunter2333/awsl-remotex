@@ -12,6 +12,7 @@ export interface GuacamoleAuthResponse {
 }
 
 export type GuacamoleFailure = "sdk" | "authentication" | "forbidden" | "dns" | "certificate" | "security" | "timeout" | "busy" | "conflict" | "upstream" | "disconnected"
+export type ClipboardDirection = "local-to-remote" | "remote-to-local"
 
 export class GuacamoleSessionError extends Error {
   constructor(readonly failure: GuacamoleFailure, message: string) {
@@ -114,6 +115,7 @@ interface GuacamoleSessionCallbacks {
   isRemoteCursor?: () => boolean
   isWheelReversed?: () => boolean
   onActivity: () => void
+  onClipboard?: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
   onDisplayResize: () => void
   onEnded: (failure: GuacamoleFailure) => void
   onReady: () => void
@@ -266,6 +268,9 @@ export class GuacamoleSession implements KeyEventSender {
   private connected = false
   private generation = 0
   private keyboard?: DocumentKeyboardRegistration
+  private clipboardRevision = 0
+  private clipboardSyncing = false
+  private lastClipboard?: string
   private reported = false
   private sdk?: GuacamoleSDK
   private token = ""
@@ -285,6 +290,8 @@ export class GuacamoleSession implements KeyEventSender {
   async connect(connectionID: string, connectionURL: string) {
     const generation = ++this.generation
     void this.releaseCurrent()
+    ++this.clipboardRevision
+    this.lastClipboard = undefined
     this.reported = false
     this.abortController = new AbortController()
 
@@ -330,12 +337,23 @@ export class GuacamoleSession implements KeyEventSender {
   }
 
   async syncClipboard() {
-    if (!this.connected || !this.callbacks.isActive()) return
+    if (!this.connected || !this.callbacks.isActive() || this.clipboardSyncing) return
+    const generation = this.generation
+    const clipboardRevision = this.clipboardRevision
     const read = this.dependencies.readClipboard ?? (() => navigator.clipboard?.readText() ?? Promise.reject(new Error("Clipboard API is unavailable")))
+    this.clipboardSyncing = true
     try {
-      this.sendClipboard(await read())
+      const text = await read()
+      if (generation !== this.generation || clipboardRevision !== this.clipboardRevision || !this.connected || !this.callbacks.isActive()) return
+      if (text === this.lastClipboard) return
+      if (!this.sendClipboard(text)) throw new Error("Clipboard stream is unavailable")
+      this.lastClipboard = text
+      this.callbacks.onClipboard?.("local-to-remote", true, text)
     } catch {
-      return
+      if (generation !== this.generation || clipboardRevision !== this.clipboardRevision || !this.connected || !this.callbacks.isActive()) return
+      this.callbacks.onClipboard?.("local-to-remote", false)
+    } finally {
+      this.clipboardSyncing = false
     }
   }
 
@@ -362,6 +380,21 @@ export class GuacamoleSession implements KeyEventSender {
     writer.sendEnd()
     this.callbacks.onActivity()
     return true
+  }
+
+  setClipboard(text: string) {
+    if (!this.connected || !this.callbacks.isActive()) {
+      if (this.callbacks.isActive()) this.callbacks.onClipboard?.("local-to-remote", false, text)
+      return false
+    }
+    if (text === this.lastClipboard) return true
+    ++this.clipboardRevision
+    const succeeded = this.sendClipboard(text)
+    if (succeeded) {
+      this.lastClipboard = text
+    }
+    this.callbacks.onClipboard?.("local-to-remote", succeeded, text)
+    return succeeded
   }
 
   fitDisplay() {
@@ -514,9 +547,22 @@ export class GuacamoleSession implements KeyEventSender {
     await (this.dependencies.revoke ?? revokeGuacamoleSession)(token)
   }
 
-  private writeClipboard(text: string) {
-    const write = this.dependencies.writeClipboard ?? ((value: string) => navigator.clipboard?.writeText(value) ?? Promise.resolve())
-    return write(text).catch(() => undefined)
+  private async writeClipboard(text: string) {
+    if (!this.connected || !this.callbacks.isActive()) return
+    const write = this.dependencies.writeClipboard ?? ((value: string) => navigator.clipboard?.writeText(value) ?? Promise.reject(new Error("Clipboard API is unavailable")))
+    const generation = this.generation
+    const clipboardRevision = ++this.clipboardRevision
+    const previousClipboard = this.lastClipboard
+    this.lastClipboard = text
+    try {
+      await write(text)
+      if (generation !== this.generation || clipboardRevision !== this.clipboardRevision || !this.connected || !this.callbacks.isActive()) return
+      this.callbacks.onClipboard?.("remote-to-local", true, text)
+    } catch {
+      if (generation !== this.generation || clipboardRevision !== this.clipboardRevision || !this.connected || !this.callbacks.isActive()) return
+      this.lastClipboard = previousClipboard
+      this.callbacks.onClipboard?.("remote-to-local", false, text)
+    }
   }
 
   private readonly clearInput = (event: Event) => {

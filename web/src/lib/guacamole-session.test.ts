@@ -223,13 +223,14 @@ describe("Guacamole direct session", () => {
     const ready = vi.fn()
     const ended = vi.fn()
     const activity = vi.fn()
+    const clipboard = vi.fn()
     const revoke = vi.fn().mockResolvedValue(undefined)
     const writeClipboard = vi.fn().mockResolvedValue(undefined)
     const session = new GuacamoleSession(
       displayHost as unknown as HTMLElement,
       displaySurface as unknown as HTMLElement,
       keyboardInput as unknown as HTMLTextAreaElement,
-      { isActive: () => true, onActivity: activity, onDisplayResize: vi.fn(), onEnded: ended, onReady: ready },
+      { isActive: () => true, onActivity: activity, onClipboard: clipboard, onDisplayResize: vi.fn(), onEnded: ended, onReady: ready },
       {
         authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
         loadSDK: vi.fn().mockResolvedValue(runtime.sdk),
@@ -319,6 +320,7 @@ describe("Guacamole direct session", () => {
     runtime.readers[0].onend?.()
     await Promise.resolve()
     expect(writeClipboard).toHaveBeenCalledWith("远程剪贴板")
+    expect(clipboard).toHaveBeenCalledWith("remote-to-local", true, "远程剪贴板")
 
     await session.disconnect()
     expect(client.disconnected).toBe(true)
@@ -326,15 +328,16 @@ describe("Guacamole direct session", () => {
     expect(ended).not.toHaveBeenCalled()
   })
 
-  it("syncs the local clipboard without injecting a paste shortcut", async () => {
+  it("syncs changed local clipboard content without injecting a paste shortcut", async () => {
     const runtime = createSDK()
     const keyboardInput = new FakeElement()
     const readClipboard = vi.fn().mockResolvedValue("本机剪贴板")
+    const clipboard = vi.fn()
     const session = new GuacamoleSession(
       new FakeElement() as unknown as HTMLElement,
       new FakeElement() as unknown as HTMLElement,
       keyboardInput as unknown as HTMLTextAreaElement,
-      { isActive: () => true, onActivity: vi.fn(), onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
+      { isActive: () => true, onActivity: vi.fn(), onClipboard: clipboard, onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
       {
         authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
         loadSDK: vi.fn().mockResolvedValue(runtime.sdk),
@@ -349,6 +352,26 @@ describe("Guacamole direct session", () => {
     expect(runtime.writers.at(-1)).toMatchObject({ text: "本机剪贴板", ended: true })
     expect(runtime.clients[0].keyEvents).toEqual([])
     expect(readClipboard).toHaveBeenCalledOnce()
+    expect(clipboard).toHaveBeenCalledWith("local-to-remote", true, "本机剪贴板")
+
+    await session.syncClipboard()
+    expect(runtime.writers).toHaveLength(1)
+
+    readClipboard.mockResolvedValue("更新后的剪贴板")
+    await session.syncClipboard()
+    expect(runtime.writers).toHaveLength(2)
+    expect(runtime.writers.at(-1)).toMatchObject({ text: "更新后的剪贴板", ended: true })
+
+    expect(session.setClipboard("弹窗中的剪贴板")).toBe(true)
+    expect(runtime.writers).toHaveLength(3)
+    expect(runtime.writers.at(-1)).toMatchObject({ text: "弹窗中的剪贴板", ended: true })
+    expect(clipboard).toHaveBeenLastCalledWith("local-to-remote", true, "弹窗中的剪贴板")
+
+    readClipboard.mockRejectedValue(new Error("denied"))
+    await session.syncClipboard()
+    await session.syncClipboard()
+    expect(clipboard).toHaveBeenCalledTimes(5)
+    expect(clipboard).toHaveBeenLastCalledWith("local-to-remote", false)
 
     runtime.keyboards[0].press(0xffe3)
     runtime.keyboards[0].press(0x76)

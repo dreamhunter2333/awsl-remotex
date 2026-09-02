@@ -3,15 +3,17 @@ import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { Asset } from "@/lib/api"
-import { GuacamoleSession, type GuacamoleFailure } from "@/lib/guacamole-session"
+import { GuacamoleSession, type ClipboardDirection, type GuacamoleFailure } from "@/lib/guacamole-session"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
 export interface SessionHandle {
   captureKeys: (onComplete: (keys: readonly number[]) => void) => (() => void) | undefined
   disconnect: () => Promise<void>
+  sendClipboard: (text: string) => boolean
   showKeyboard: () => boolean
   sendKeys: (keys: readonly number[]) => boolean
+  syncClipboard: () => Promise<void>
 }
 
 interface SessionViewportProps {
@@ -24,6 +26,7 @@ interface SessionViewportProps {
   onSessionEnded: (message: string) => void
   onReady: () => void
   onActivity: () => void
+  onClipboard: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
 }
 
 export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(function SessionViewport({
@@ -36,6 +39,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   onSessionEnded,
   onReady,
   onActivity,
+  onClipboard,
 }, ref) {
   const { t } = usePreferences()
   const [frameReady, setFrameReady] = useState(false)
@@ -49,12 +53,14 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   const onSessionEndedRef = useRef(onSessionEnded)
   const onReadyRef = useRef(onReady)
   const onActivityRef = useRef(onActivity)
+  const onClipboardRef = useRef(onClipboard)
   const notifyResizeRef = useRef<() => void>(() => undefined)
 
   activeRef.current = active
   onSessionEndedRef.current = onSessionEnded
   onReadyRef.current = onReady
   onActivityRef.current = onActivity
+  onClipboardRef.current = onClipboard
 
   const failureMessage = (failure: GuacamoleFailure) => {
     switch (failure) {
@@ -77,8 +83,10 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   useImperativeHandle(ref, () => ({
     captureKeys: (onComplete) => controllerRef.current?.captureKeys(onComplete),
     disconnect: () => controllerRef.current?.disconnect() ?? Promise.resolve(),
+    sendClipboard: (text) => controllerRef.current?.setClipboard(text) ?? false,
     showKeyboard: () => controllerRef.current?.focus() ?? false,
     sendKeys: (keys) => controllerRef.current?.sendKeys(keys) ?? false,
+    syncClipboard: () => controllerRef.current?.syncClipboard() ?? Promise.resolve(),
   }), [])
 
   useEffect(() => {
@@ -106,6 +114,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
       isRemoteCursor: () => vncSettingsRef.current?.cursor === "remote",
       isWheelReversed: () => vncSettingsRef.current?.wheelDirection === "reverse",
       onActivity: () => onActivityRef.current(),
+      onClipboard: (direction, succeeded, text) => onClipboardRef.current(direction, succeeded, text),
       onDisplayResize: notifyResize,
       onEnded: (failure) => {
         setFrameReady(false)
@@ -146,11 +155,17 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   useEffect(() => {
     if (!active || !frameReady) return
     const syncClipboard = () => void controllerRef.current?.syncClipboard()
+    const clipboard = navigator.clipboard as (Clipboard & { onclipboardchange?: unknown }) | undefined
+    const supportsClipboardChange = clipboard && "onclipboardchange" in clipboard
     notifyResizeRef.current()
     syncClipboard()
     controllerRef.current?.focus()
+    if (supportsClipboardChange) clipboard.addEventListener("clipboardchange", syncClipboard)
     window.addEventListener("focus", syncClipboard)
-    return () => window.removeEventListener("focus", syncClipboard)
+    return () => {
+      if (supportsClipboardChange) clipboard.removeEventListener("clipboardchange", syncClipboard)
+      window.removeEventListener("focus", syncClipboard)
+    }
   }, [active, frameReady])
 
   return (
