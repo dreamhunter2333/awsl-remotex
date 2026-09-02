@@ -1,0 +1,16 @@
+diff --git a/Dockerfile b/Dockerfile
+index 20795d5..b6f7945 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -232,8 +232,10 @@ ARG LIBVNCCLIENT_X86_OPTS
+ ARG PREFIX_DIR
+ ARG WITH_LIBVNCCLIENT
+ 
++COPY ./vendor/libvncserver ${BUILD_DIR}/libvncserver
++
+ RUN ${BUILD_DIR}/src/guacd-docker/bin/autobuild.sh "LIBVNCCLIENT" \
+-    "https://github.com/LibVNC/libvncserver"
++    "${BUILD_DIR}/libvncserver"
+ 
+ #
+ # Build dependency: libwebsockets

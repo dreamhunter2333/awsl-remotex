@@ -1,0 +1,63 @@
+diff --git a/src/libvncclient/rfbclient.c b/src/libvncclient/rfbclient.c
+index 9c2f349..b7a918f 100644
+--- a/src/libvncclient/rfbclient.c
++++ b/src/libvncclient/rfbclient.c
+@@ -1801,6 +1801,23 @@ sendExtClientCutTextNotify(rfbClient *client)
+   return ret;
+ }
+ 
++/*
++ * Request the clipboard contents announced by an Extended Clipboard Notify
++ * message. Some servers, including QEMU, do not send clipboard contents until
++ * the client explicitly requests them.
++ */
++static rfbBool
++sendExtClientCutTextRequest(rfbClient *client)
++{
++  rfbClientCutTextMsg cct = {0, };
++  const uint32_t be_flags = rfbClientSwap32IfLE(rfbExtendedClipboard_Request
++                                                | rfbExtendedClipboard_Text);
++  cct.type = rfbClientCutText;
++  cct.length = rfbClientSwap32IfLE(-((uint32_t)sizeof(be_flags)));
++  return WriteToRFBServer(client, (char *)&cct, sz_rfbClientCutTextMsg)
++         && WriteToRFBServer(client, (char *)&be_flags, sizeof(be_flags));
++}
++
+ /**
+  * Due to bugs, many servers (including most versions of LibVNCServer) can't
+  * properly handle zlib streams created by compress() function of zlib library.
+@@ -1936,24 +1953,26 @@ rfbClientProcessExtServerCutText(rfbClient* client, char *data, int len)
+   len -= sizeof(flags);
+   flags = rfbClientSwap32IfLE(flags);
+ 
+-  /*
+-   * only process (text | provide). Ignore all others
+-   * modify here if need more types(rtf,html,dib,files)
+-   */
++  /* Only process text clipboard messages. */
+   if (!(flags & rfbExtendedClipboard_Text)) {
+     rfbClientLog("rfbClientProcessExtServerCutText. not text type. ignore\n");
+     return TRUE;
+   }
+-  if (!(flags & rfbExtendedClipboard_Provide)) {
+-    rfbClientLog("rfbClientProcessExtServerCutText. not provide type. ignore\n");
+-    return TRUE;
+-  }
++
+   if (flags & rfbExtendedClipboard_Caps) {
+     rfbClientLog("rfbClientProcessExtServerCutText. default cap.\n");
+     client->extendedClipboardServerCapabilities |= rfbExtendedClipboard_Text; /* for now, only text */
+     return TRUE;
+   }
+ 
++  if (flags & rfbExtendedClipboard_Notify)
++    return sendExtClientCutTextRequest(client);
++
++  if (!(flags & rfbExtendedClipboard_Provide)) {
++    rfbClientLog("rfbClientProcessExtServerCutText. unsupported action. ignore\n");
++    return TRUE;
++  }
++
+   z_stream stream;
+   stream.zalloc = NULL;
+   stream.zfree = NULL;

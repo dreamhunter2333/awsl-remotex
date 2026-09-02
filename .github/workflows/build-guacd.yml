@@ -1,0 +1,118 @@
+name: Publish patched guacd
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: GHCR image tag
+        required: true
+        default: 1.6.1-clipboard.1
+        type: string
+      guacamole_ref:
+        description: Apache Guacamole git ref
+        required: true
+        default: 06a094d01943a0f342612001ae8c8edd92ccff6d
+        type: string
+      libvncserver_ref:
+        description: LibVNCServer git ref
+        required: true
+        default: 9b54b1ec32731bd23158ca014dc18014db4194c3
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/awsl-remotex-guacd
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Clone and patch upstream sources
+        id: source
+        env:
+          GUACAMOLE_REF: ${{ inputs.guacamole_ref }}
+          LIBVNCSERVER_REF: ${{ inputs.libvncserver_ref }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          umask 022
+
+          valid_ref='^[0-9A-Za-z][0-9A-Za-z._/-]*$'
+          if [[ ! "$GUACAMOLE_REF" =~ $valid_ref || "$GUACAMOLE_REF" == *..* ]]; then
+            echo "Invalid Guacamole ref: $GUACAMOLE_REF" >&2
+            exit 1
+          fi
+          if [[ ! "$LIBVNCSERVER_REF" =~ $valid_ref || "$LIBVNCSERVER_REF" == *..* ]]; then
+            echo "Invalid LibVNCServer ref: $LIBVNCSERVER_REF" >&2
+            exit 1
+          fi
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9A-Za-z_][0-9A-Za-z_.-]{0,127}$ ]]; then
+            echo "Invalid image tag: $IMAGE_TAG" >&2
+            exit 1
+          fi
+
+          clone_ref() {
+            local repository="$1"
+            local ref="$2"
+            local destination="$3"
+
+            git init --quiet "$destination"
+            git -C "$destination" remote add origin "$repository"
+            git -C "$destination" fetch --quiet --depth 1 origin "$ref"
+            git -C "$destination" -c advice.detachedHead=false checkout --quiet --detach FETCH_HEAD
+          }
+
+          clone_ref https://github.com/apache/guacamole-server.git "$GUACAMOLE_REF" build-context
+          clone_ref https://github.com/LibVNC/libvncserver.git "$LIBVNCSERVER_REF" libvncserver
+
+          mkdir -p build-context/vendor/libvncserver
+          git -C libvncserver archive HEAD | tar -x -C build-context/vendor/libvncserver
+          git -C build-context apply --directory=vendor/libvncserver \
+            "$GITHUB_WORKSPACE/build/guacd/patches/libvncclient-qemu-clipboard.patch"
+          git -C build-context apply \
+            "$GITHUB_WORKSPACE/build/guacd/patches/guacamole-local-libvncclient.patch"
+
+          guacamole_sha=$(git -C build-context rev-parse HEAD)
+          libvncserver_sha=$(git -C libvncserver rev-parse HEAD)
+          {
+            echo "guacamole_sha=$guacamole_sha"
+            echo "libvncserver_sha=$libvncserver_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish
+        uses: docker/build-push-action@v7
+        with:
+          context: build-context
+          file: build-context/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ inputs.image_tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            io.awsl-remotex.guacamole.revision=${{ steps.source.outputs.guacamole_sha }}
+            io.awsl-remotex.libvncserver.revision=${{ steps.source.outputs.libvncserver_sha }}
+          cache-from: type=gha,scope=guacd
+          cache-to: type=gha,mode=max,scope=guacd
+          provenance: mode=max
+          sbom: true
