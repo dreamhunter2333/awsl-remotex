@@ -47,7 +47,15 @@ pnpm --dir web dev
 
 The browser SDK is vendored under `web/public/vendor/guacamole/1.6.0`. Its version, source URL, license, and notice must remain synchronized. See [SOURCE.md](../web/public/vendor/guacamole/1.6.0/SOURCE.md).
 
-Do not replace the SDK file without updating `GUACAMOLE_SDK_VERSION`, provenance files, and the matching Guacamole/`guacd` images.
+Do not replace the SDK file without updating `GUACAMOLE_SDK_VERSION`, provenance files, and the compatible Guacamole/`guacd` images.
+
+## Patched guacd / 定制 guacd
+
+The checked-in Compose stack and the separately maintained Helm chart use `ghcr.io/dreamhunter2333/awsl-remotex-guacd:1.6.1`. This image is built through the manually dispatched `Publish patched guacd` workflow, not during an ordinary application release.
+
+The workflow accepts an image tag plus pinned Apache Guacamole and LibVNCServer refs, validates those inputs, clones both sources, applies the two patches under `build/guacd/patches`, and publishes Linux `amd64` and `arm64` images with provenance and an SBOM. It never builds from a moving branch implicitly.
+
+其中 LibVNCClient 补丁仅处理 QEMU Extended Clipboard 的 `Notify` → `Request` 流程；另一个补丁让 Apache Guacamole 的 Docker 构建使用已打补丁的本地 LibVNCServer 源码。普通应用 Tag 不会重复构建 `guacd`。使用说明参见[部署文档](deployment.md)。
 
 ## Release flow / 发版流程
 

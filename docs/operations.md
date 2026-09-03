@@ -34,6 +34,7 @@ Do not merge files from different SQLite backups or copy only the `.db` file whi
 
 ```bash
 docker compose logs -f awsl-remotex guacamole guacd
+docker compose --profile pve logs -f pve-vnc-proxy
 ```
 
 Awsl RemoteX writes structured JSON logs to standard output. Failed HTTP requests include method and path but do not intentionally log saved credential values.
@@ -50,6 +51,20 @@ Awsl RemoteX writes structured JSON logs to standard output. Failed HTTP request
 | Authentication fails after proxying HTTPS | Preserve `X-Forwarded-Proto: https`, allow cookies, and avoid cross-site embedding. / 保留 HTTPS 转发头并允许 Cookie。 |
 | Canvas connects but keyboard input does not arrive | Confirm the tab is active and reconnect after upgrading from an older cached PWA. Reserved browser shortcuts cannot be forwarded. / 确认活动 Tab，清理旧 PWA 缓存或重连；浏览器保留快捷键无法转发。 |
 | Two pointers appear | Verify the UI version is at least `v0.2.14` and reload the PWA. / 确认版本不低于 `v0.2.14` 并刷新 PWA。 |
+| A VNC advanced-setting menu does not appear | Upgrade to `v0.2.25` or later and fully reload the PWA. / 升级到 `v0.2.25` 或更高版本并完整刷新 PWA。 |
+| PVE VNC returns HTTP 401 or 403 | Verify the full Token ID, Token Secret, and `PVEVMUser` permission on the VM. / 检查完整 Token ID、Secret 与 VM 权限。 |
+| PVE Windows clipboard is one-way | Verify the custom `guacd` image, PVE Clipboard `VNC`, Windows SPICE Guest Tools, and the optional `UTF-8` asset setting. / 检查定制 `guacd`、PVE 显示设置、Guest 工具及 `UTF-8` 资产设置。 |
 | UI still shows an old version | Close all installed-PWA windows, reopen online, or remove and reinstall the PWA. / 关闭全部 PWA 窗口后联网重开，必要时重新安装。 |
 
 Connection testing first probes the target TCP port and then asks `guacd` to establish the protocol. It does not validate the browser WebSocket or Canvas path; use both `/api/ready` and a real session when diagnosing end-to-end failures.
+
+For Kubernetes, select the container explicitly:
+
+```bash
+kubectl -n default logs statefulset/awsl-remotex -c awsl-remotex --tail=100
+kubectl -n default logs statefulset/awsl-remotex -c guacamole --tail=100
+kubectl -n default logs statefulset/awsl-remotex -c guacd --tail=100
+kubectl -n default logs statefulset/awsl-remotex -c pve-vnc-proxy --tail=100
+```
+
+The last command applies only when the PVE sidecar is enabled. PVE diagnostics are included in [Deployment](deployment.md).

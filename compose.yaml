@@ -1,5 +1,6 @@
 services:
   awsl-remotex:
+    image: ${AWSL_REMOTEX_IMAGE:-awsl-remotex:local}
     build:
       context: .
       dockerfile: Dockerfile.dev
@@ -20,7 +21,7 @@ services:
     restart: unless-stopped
 
   guacd:
-    image: guacamole/guacd:1.6.0
+    image: ghcr.io/dreamhunter2333/awsl-remotex-guacd:1.6.1
     restart: unless-stopped
 
   guacamole:
@@ -32,4 +33,14 @@ services:
       JSON_ENABLED: "true"
       JSON_SECRET_KEY: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET to 32 hexadecimal characters}
       API_SESSION_TIMEOUT: ${GUACAMOLE_SESSION_TIMEOUT_MINUTES:-1440}
+    restart: unless-stopped
+
+  pve-vnc-proxy:
+    profiles: ["pve"]
+    image: ghcr.io/dreamhunter2333/pve-vnc-proxy:v0.1.0
+    environment:
+      PVE_HOST: ${PVE_HOST:-}
+      PVE_LISTEN: 0.0.0.0:5900
+      PVE_INSECURE: ${PVE_INSECURE:-false}
+      PVE_MAX_CONNS: ${PVE_MAX_CONNS:-256}
     restart: unless-stopped

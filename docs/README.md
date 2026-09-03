@@ -2,7 +2,7 @@
 
 - [Architecture / 架构](architecture.md): components, data flow, keyboard routing, and session lifecycle.
 - [Configuration / 配置](configuration.md): application, Compose, browser, and persistence settings.
-- [Deployment / 部署](deployment.md): source and image installation, reverse proxy, health checks, and upgrades.
+- [Deployment / 部署](deployment.md): Docker Compose, Kubernetes/Helm, reverse proxy, health checks, and upgrades.
 - [Operations / 运维](operations.md): backup, restore, timeouts, logs, and troubleshooting.
 - [HTTP API](api.md): authentication, assets, tests, and health endpoints.
 - [Development / 开发](development.md): toolchain, verification, local development, and releases.

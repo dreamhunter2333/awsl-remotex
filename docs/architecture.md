@@ -34,6 +34,14 @@ Awsl RemoteX 由一个 Go HTTP 服务、Apache Guacamole 和 `guacd` 组成。Go
 
 应用按单副本设计，SQLite 每个进程仅使用一个连接。应用数据目录需要持久化；Guacamole 与 `guacd` 不保存 Awsl RemoteX 的业务数据。所有 `/guacamole/*` HTTP 和 WebSocket 流量都通过 Go 服务代理，当前公开路径固定为 `/guacamole`。
 
+Helm 将 Awsl RemoteX、Guacamole 与 `guacd` 放进同一个 StatefulSet Pod；启用 PVE VNC Proxy 后增加第四个 Sidecar。容器共享 Pod 网络，因此内部地址均使用 `127.0.0.1`。Docker Compose 中各进程位于独立容器，通过服务名互访。
+
+### 定制 guacd 的边界
+
+PVE/QEMU 的 RFB Extended Clipboard 会先发送 `Notify`，等待客户端发送 `Request` 后才提供剪贴板文本。Guacamole 1.6.0 官方 `guacd` 镜像所用的 LibVNCClient 会忽略这类非 `Provide` 消息，使 Guest 到浏览器方向无法同步。项目的 `guacd` 镜像从固定版本的 Apache Guacamole 与 LibVNCServer 源码构建，只补充收到文本 `Notify` 后发送 `Request` 的行为。
+
+该补丁位于 `build/guacd/patches`，不会改变 SSH、RDP、JSON 认证、PVE Token 或普通 VNC 数据通道。镜像构建工作流固定上游提交，并发布多架构镜像、SBOM 与来源证明。无需 PVE Extended Clipboard 时可改回官方 `guacamole/guacd`。
+
 ## English
 
 Awsl RemoteX consists of one Go HTTP service, Apache Guacamole, and `guacd`. The Go service provides authentication, asset APIs, SQLite persistence, static frontend files, and a same-origin reverse proxy to Guacamole. Built React files are served from `WEB_DIR`; they are not embedded in the Go binary.
@@ -67,3 +75,11 @@ Sessions do not reconnect automatically. Unexpected disconnects keep the tab ope
 ### Deployment model
 
 The application is designed for one replica, and SQLite is limited to one connection per process. Persist only the application data directory; Guacamole and `guacd` do not store Awsl RemoteX business data. All `/guacamole/*` HTTP and WebSocket traffic is proxied by the Go service, and the public path is currently fixed at `/guacamole`.
+
+Helm places Awsl RemoteX, Guacamole, and `guacd` in one StatefulSet Pod, with a fourth sidecar when PVE VNC Proxy is enabled. Pod containers share loopback addresses. Docker Compose uses separate containers and service-name DNS instead.
+
+### Custom guacd boundary
+
+PVE/QEMU RFB Extended Clipboard first sends a `Notify` and waits for the client to send a `Request` before providing text. The LibVNCClient version used by the official Guacamole 1.6.0 `guacd` image ignores this non-`Provide` message, preventing guest-to-browser updates. The project image builds pinned Apache Guacamole and LibVNCServer sources and adds only the missing text request after a notification.
+
+The patch lives under `build/guacd/patches`. It does not change SSH, RDP, JSON authentication, PVE tokens, or ordinary VNC transport. The manual build workflow pins upstream commits and publishes multi-architecture images with an SBOM and provenance. Deployments that do not need PVE Extended Clipboard can use the official `guacamole/guacd` image.

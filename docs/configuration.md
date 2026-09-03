@@ -36,10 +36,34 @@ Use the 32-character output for `GUACAMOLE_JSON_SECRET` and the 64-character out
 | Variable | Default | Purpose / 用途 |
 | --- | --- | --- |
 | `GUACAMOLE_SESSION_TIMEOUT_MINUTES` | `1440` | Passed to Guacamole as `API_SESSION_TIMEOUT`; it is not read by the Go application / 作为 `API_SESSION_TIMEOUT` 传给 Guacamole，Go 应用不会读取 |
+| `AWSL_REMOTEX_IMAGE` | `awsl-remotex:local` | Set to a published image when running Compose with `--no-build` / 使用 `--no-build` 时指定发布镜像 |
+| `PVE_HOST` | empty | Required PVE API origin when the optional `pve` profile is enabled / 启用可选 `pve` profile 时必填的 PVE API 地址 |
+| `PVE_INSECURE` | `false` | Skip PVE certificate verification; trusted private networks only / 跳过 PVE 证书校验，仅限可信私网 |
+| `PVE_MAX_CONNS` | `256` | Maximum concurrent connections accepted by `pve-vnc-proxy` / PVE 代理最大并发连接数 |
 
-The checked-in [compose.yaml](../compose.yaml) supplies the internal upstream addresses. `.env` is used only for Compose interpolation and is excluded from Git and Docker build contexts.
+The checked-in [compose.yaml](../compose.yaml) supplies the internal upstream addresses. Its optional `pve` profile starts `pve-vnc-proxy`; the profile stays disabled during a normal deployment. `.env` is used only for Compose interpolation and is excluded from Git and Docker build contexts.
 
 仓库中的 [compose.yaml](../compose.yaml) 已提供内部服务地址。`.env` 只用于 Compose 变量替换，且不会进入 Git 或 Docker 构建上下文。
+
+仓库中的 [compose.yaml](../compose.yaml) 通过可选的 `pve` profile 启动 `pve-vnc-proxy`，普通部署不会启用该 profile。完整配置参见[部署文档](deployment.md)。
+
+## Helm values / Helm 参数
+
+The chart is maintained in [`dreamhunter2333/helm-charts`](https://github.com/dreamhunter2333/helm-charts/tree/main/awsl-remotex). Important value groups are:
+
+| Values path | Purpose / 用途 |
+| --- | --- |
+| `auth.*` | Login credentials, encryption key, JSON secret, or an existing Secret / 登录凭据、加密密钥、JSON 密钥或已有 Secret |
+| `image.*` | RemoteX image repository, tag, and pull policy / RemoteX 镜像配置 |
+| `persistence.*` | SQLite PVC configuration / SQLite PVC 配置 |
+| `resources` | RemoteX requests and limits / RemoteX 资源配置 |
+| `guacamole.*` | Apache Guacamole image and resources / Guacamole 镜像与资源 |
+| `guacd.*` | `guacd` image and resources; defaults to the PVE clipboard-compatible build / `guacd` 镜像与资源，默认使用兼容 PVE 剪贴板的构建 |
+| `pveVncProxy.*` | Optional PVE sidecar image, environment, and resources / 可选 PVE Sidecar 配置 |
+| `service.*`, `ingress.*` | Cluster exposure / 集群访问入口 |
+| `sessionIdleTimeout` | Inactive RemoteX tab cleanup interval / 无活动远程 Tab 清理时间 |
+
+The chart always renders one StatefulSet replica because SQLite is intentionally single-instance. See [Deployment](deployment.md) for complete commands and Secret handling.
 
 ## Persistent data / 持久数据
 
