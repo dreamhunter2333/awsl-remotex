@@ -2,6 +2,11 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.25 - 2026-09-03
+
+- Fixed VNC advanced-setting menus being hidden behind the asset dialog.
+- Added an optional per-asset UTF-8 clipboard encoding override.
+
 ## v0.2.24 - 2026-09-03
 
 - Added event-driven bidirectional clipboard synchronization with success and failure notifications.

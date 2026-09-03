@@ -6,6 +6,7 @@ export interface VNCSettings {
   colorDepth?: 8 | 16 | 24 | 32
   cursor?: "remote"
   wheelDirection?: "reverse"
+  clipboardEncoding?: "UTF-8"
 }
 
 export interface AssetSettings {

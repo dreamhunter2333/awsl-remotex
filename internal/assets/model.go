@@ -42,10 +42,11 @@ type Settings struct {
 }
 
 type VNCSettings struct {
-	Encodings      string `json:"encodings,omitempty"`
-	ColorDepth     int    `json:"colorDepth,omitempty"`
-	Cursor         string `json:"cursor,omitempty"`
-	WheelDirection string `json:"wheelDirection,omitempty"`
+	Encodings         string `json:"encodings,omitempty"`
+	ColorDepth        int    `json:"colorDepth,omitempty"`
+	Cursor            string `json:"cursor,omitempty"`
+	WheelDirection    string `json:"wheelDirection,omitempty"`
+	ClipboardEncoding string `json:"clipboardEncoding,omitempty"`
 }
 
 func (input *Input) Normalize() error {
@@ -91,6 +92,7 @@ func (input *Input) Normalize() error {
 	input.Settings.VNC.Encodings = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Encodings))
 	input.Settings.VNC.Cursor = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Cursor))
 	input.Settings.VNC.WheelDirection = strings.ToLower(strings.TrimSpace(input.Settings.VNC.WheelDirection))
+	input.Settings.VNC.ClipboardEncoding = strings.ToUpper(strings.TrimSpace(input.Settings.VNC.ClipboardEncoding))
 	if input.Settings.VNC.Encodings != "" && input.Settings.VNC.Encodings != "tight" {
 		return errors.New("VNC encodings must be tight")
 	}
@@ -105,7 +107,10 @@ func (input *Input) Normalize() error {
 	if input.Settings.VNC.WheelDirection != "" && input.Settings.VNC.WheelDirection != "reverse" {
 		return errors.New("VNC wheelDirection must be reverse")
 	}
-	if input.Settings.VNC.Encodings == "" && input.Settings.VNC.ColorDepth == 0 && input.Settings.VNC.Cursor == "" && input.Settings.VNC.WheelDirection == "" {
+	if input.Settings.VNC.ClipboardEncoding != "" && input.Settings.VNC.ClipboardEncoding != "UTF-8" {
+		return errors.New("VNC clipboardEncoding must be UTF-8")
+	}
+	if input.Settings.VNC.Encodings == "" && input.Settings.VNC.ColorDepth == 0 && input.Settings.VNC.Cursor == "" && input.Settings.VNC.WheelDirection == "" && input.Settings.VNC.ClipboardEncoding == "" {
 		input.Settings.VNC = nil
 	}
 	return nil

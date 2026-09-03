@@ -109,6 +109,7 @@ const messages = {
     wheelDirection: "滚轮方向",
     normalWheelDirection: "正常",
     reverseWheelDirection: "反转",
+    clipboardEncoding: "剪贴板编码",
     protocolDefault: "协议默认值",
   },
   en: {
@@ -219,6 +220,7 @@ const messages = {
     wheelDirection: "Wheel direction",
     normalWheelDirection: "Normal",
     reverseWheelDirection: "Reverse",
+    clipboardEncoding: "Clipboard encoding",
     protocolDefault: "Protocol default",
   },
 } as const

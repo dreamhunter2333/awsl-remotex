@@ -106,6 +106,9 @@ func ConnectionParameters(asset assets.Asset, credential credential.Value, theme
 		if asset.Settings.VNC.Cursor != "" {
 			parameters["cursor"] = asset.Settings.VNC.Cursor
 		}
+		if asset.Settings.VNC.ClipboardEncoding != "" {
+			parameters["clipboard-encoding"] = asset.Settings.VNC.ClipboardEncoding
+		}
 	}
 	if asset.Protocol == "ssh" {
 		parameters["font-name"] = "DejaVu Sans Mono"

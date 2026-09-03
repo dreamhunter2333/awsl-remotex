@@ -21,9 +21,13 @@ export function SelectTrigger({ className, children, ...props }: React.Component
   )
 }
 
-export function SelectContent({ className, children, position = "popper", ...props }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+type SelectContentProps = React.ComponentProps<typeof SelectPrimitive.Content> & {
+  container?: React.ComponentProps<typeof SelectPrimitive.Portal>["container"]
+}
+
+export function SelectContent({ className, children, container, position = "popper", ...props }: SelectContentProps) {
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={container}>
       <SelectPrimitive.Content
         position={position}
         className={cn("z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] p-1 text-[var(--foreground)] shadow-[0_12px_32px_var(--shadow)]", position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1", className)}

@@ -17,7 +17,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   onDelete: (asset: Asset) => Promise<void>
 }) {
   const { t } = usePreferences()
-  const dialogRef = useRef<HTMLDialogElement>(null)
+  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const [protocol, setProtocol] = useState<Protocol>(asset?.protocol ?? "ssh")
   const [credentialType, setCredentialType] = useState<CredentialType>(asset?.credentialType ?? "prompt")
@@ -29,11 +29,10 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    const dialog = dialogRef.current
     if (!dialog) return
     if (open && !dialog.open) dialog.showModal()
     if (!open && dialog.open) dialog.close()
-  }, [open])
+  }, [dialog, open])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -84,7 +83,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   )
 
   return (
-    <dialog ref={dialogRef} onClose={onClose} className="m-auto w-[min(460px,calc(100%-2rem))] rounded-2xl border border-[var(--border-strong)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[0_24px_80px_var(--shadow)] backdrop:bg-[var(--backdrop)]">
+    <dialog ref={setDialog} onClose={onClose} className="m-auto w-[min(460px,calc(100%-2rem))] rounded-2xl border border-[var(--border-strong)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[0_24px_80px_var(--shadow)] backdrop:bg-[var(--backdrop)]">
       <form ref={formRef} onSubmit={handleSubmit} className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <h2 className="text-base font-semibold">{asset ? t("editAsset") : t("addRemoteAsset")}</h2>
@@ -149,7 +148,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
                       <span className="text-[11px] text-[var(--muted)]">{t("vncEncoding")}</span>
                       <Select name="vncEncodings" defaultValue={asset?.settings?.vnc?.encodings ?? "default"}>
                         <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
+                        <SelectContent container={dialog}>
                           <SelectItem value="default">{t("protocolDefault")}</SelectItem>
                           <SelectItem value="tight">Tight JPEG</SelectItem>
                         </SelectContent>
@@ -159,7 +158,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
                       <span className="text-[11px] text-[var(--muted)]">{t("colorDepth")}</span>
                       <Select name="vncColorDepth" defaultValue={String(asset?.settings?.vnc?.colorDepth ?? "default")}>
                         <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
+                        <SelectContent container={dialog}>
                           <SelectItem value="default">{t("protocolDefault")}</SelectItem>
                           {[32, 24, 16, 8].map((depth) => <SelectItem key={depth} value={String(depth)}>{t("colorDepthBits", { depth })}</SelectItem>)}
                         </SelectContent>
@@ -169,7 +168,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
                       <span className="text-[11px] text-[var(--muted)]">{t("cursorRendering")}</span>
                       <Select name="vncCursor" defaultValue={asset?.settings?.vnc?.cursor ?? "default"}>
                         <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
+                        <SelectContent container={dialog}>
                           <SelectItem value="default">{t("protocolDefault")}</SelectItem>
                           <SelectItem value="remote">{t("serverRenderedCursor")}</SelectItem>
                         </SelectContent>
@@ -179,9 +178,19 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
                       <span className="text-[11px] text-[var(--muted)]">{t("wheelDirection")}</span>
                       <Select name="vncWheelDirection" defaultValue={asset?.settings?.vnc?.wheelDirection ?? "default"}>
                         <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
+                        <SelectContent container={dialog}>
                           <SelectItem value="default">{t("normalWheelDirection")}</SelectItem>
                           <SelectItem value="reverse">{t("reverseWheelDirection")}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-[11px] text-[var(--muted)]">{t("clipboardEncoding")}</span>
+                      <Select name="vncClipboardEncoding" defaultValue={asset?.settings?.vnc?.clipboardEncoding ?? "default"}>
+                        <SelectTrigger className="h-8 w-full border border-[var(--border)] bg-[var(--input)]"><SelectValue /></SelectTrigger>
+                        <SelectContent container={dialog}>
+                          <SelectItem value="default">{t("protocolDefault")}</SelectItem>
+                          <SelectItem value="UTF-8">UTF-8</SelectItem>
                         </SelectContent>
                       </Select>
                     </label>
@@ -230,12 +239,14 @@ function readInput(form: HTMLFormElement, protocol: Protocol, credentialType: Cr
   const colorDepth = Number(values.get("vncColorDepth"))
   const cursor = String(values.get("vncCursor") || "default")
   const wheelDirection = String(values.get("vncWheelDirection") || "default")
+  const clipboardEncoding = String(values.get("vncClipboardEncoding") || "default")
   input.settings = {
     vnc: {
       ...(encodings === "tight" ? { encodings } : {}),
       ...([8, 16, 24, 32].includes(colorDepth) ? { colorDepth: colorDepth as 8 | 16 | 24 | 32 } : {}),
       ...(cursor === "remote" ? { cursor } : {}),
       ...(wheelDirection === "reverse" ? { wheelDirection } : {}),
+      ...(clipboardEncoding === "UTF-8" ? { clipboardEncoding } : {}),
     },
   }
   return input
