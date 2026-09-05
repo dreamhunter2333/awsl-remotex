@@ -2,13 +2,24 @@
 
 ## Backup / 备份
 
-The safest file-level backup stops the application so the SQLite database and its WAL files are consistent:
+Stop the application before backing up SQLite and its WAL files. Run `tar` in a temporary container as the application's user so it can read the protected data directory; the archive is written by your host shell. Run these commands from the directory containing `compose.yaml`:
+
+先停止应用，再备份 SQLite 及其 WAL 文件。通过临时容器中的应用用户读取受保护的数据目录，压缩包由宿主机 Shell 写入。在 `compose.yaml` 所在目录执行：
 
 ```bash
-docker compose stop awsl-remotex
-tar -C data -czf "awsl-remotex-data-$(date +%Y%m%d-%H%M%S).tar.gz" .
-docker compose start awsl-remotex
+(
+  umask 077
+  backup_archive="awsl-remotex-data-$(date +%Y%m%d-%H%M%S).tar.gz"
+  docker compose stop awsl-remotex &&
+    docker compose run --rm --no-deps -T --entrypoint tar awsl-remotex \
+      -C /app/data -czf - . > "$backup_archive" &&
+    docker compose start awsl-remotex
+)
 ```
+
+If backup fails, the application remains stopped. Resolve the error and repeat the backup before starting it again; an archive from a failed command is incomplete. `-T` keeps the archive stream free of terminal processing.
+
+备份失败时应用保持停止，请处理错误并重新备份后再启动；失败命令留下的压缩包不完整。`-T` 用于避免终端处理破坏压缩包数据流。
 
 Back up `.env` separately in a secret manager. Never commit it. The database backup is insufficient without the original `CREDENTIAL_KEY` when saved credentials exist.
 
@@ -16,10 +27,30 @@ Back up `.env` separately in a secret manager. Never commit it. The database bac
 
 ## Restore / 恢复
 
-1. Stop `awsl-remotex`.
-2. Restore the archive into an empty `data` directory.
-3. Restore the same `CREDENTIAL_KEY`. `GUACAMOLE_JSON_SECRET` may be rotated, but the application and Guacamole must use the same current value.
-4. Start the service and check `/api/ready` before using assets.
+Restore the original `.env`, especially `CREDENTIAL_KEY`, and stop `awsl-remotex` before moving any existing `data` directory aside. Keep that directory until the restore is verified. Create an empty `./data` directory and replace the archive filename below with your backup. Extraction runs as container root to restore ownership to the current image's `awsl` user; the application itself still runs as non-root.
+
+先恢复原 `.env`，尤其是 `CREDENTIAL_KEY`，并停止 `awsl-remotex`；如已有 `data` 目录，先将它移到备份位置，恢复验证完成前保留。创建空的 `./data` 目录，将下方文件名替换为实际备份文件。解压使用容器内 root，将文件所有者修正为当前镜像的 `awsl` 用户；应用仍以非 root 用户运行。
+
+```bash
+backup_archive="awsl-remotex-data-YYYYMMDD-HHMMSS.tar.gz"
+test -f "$backup_archive" &&
+  docker compose stop awsl-remotex &&
+  mkdir -p ./data &&
+  docker compose run --rm --no-deps -T --user root --entrypoint sh awsl-remotex \
+    -c 'if [ -n "$(ls -A /app/data)" ]; then
+          echo "Restore requires an empty data directory" >&2
+          exit 1
+        fi
+        tar -xzf - -C /app/data &&
+          chown -R awsl:awsl /app/data && chmod 750 /app/data' < "$backup_archive" &&
+  docker compose up -d &&
+  curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 2 \
+    http://127.0.0.1:8080/api/ready
+```
+
+The restore refuses a non-empty target and starts the services only after successful extraction and ownership repair. `GUACAMOLE_JSON_SECRET` may be rotated, but RemoteX and Guacamole must use the same current value.
+
+恢复命令会拒绝非空目标，只有解压和权限修正成功后才启动服务。`GUACAMOLE_JSON_SECRET` 可以轮换，但 RemoteX 与 Guacamole 必须使用相同的新值。
 
 Do not merge files from different SQLite backups or copy only the `.db` file while the service is running.
 

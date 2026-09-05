@@ -19,45 +19,82 @@ Awsl RemoteX 只专注远程控制，不包含录制回放、审批流、命令�
 
 ## Docker Compose 部署
 
-需要 Docker 和 Compose v2。克隆仓库、创建环境文件，并替换示例密码和密钥：
+需要 Docker 和 Compose v2 或更高版本。普通部署不需要克隆源码。新建目录，将下面内容保存为 `compose.yaml`：
 
-```bash
-git clone https://github.com/dreamhunter2333/awsl-remotex.git
-cd awsl-remotex
-cp .env.example .env
-openssl rand -hex 16
-openssl rand -hex 32
+```yaml
+services:
+  awsl-remotex:
+    image: ghcr.io/dreamhunter2333/awsl-remotex:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
+      GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
+      GUACAMOLE_UPSTREAM: http://guacamole:8080
+      GUACD_ADDRESS: guacd:4822
+      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-24h}
+    depends_on: [guacamole]
+    restart: unless-stopped
+
+  guacamole:
+    image: guacamole/guacamole:1.6.0
+    environment:
+      GUACD_HOSTNAME: guacd
+      JSON_ENABLED: "true"
+      JSON_SECRET_KEY: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
+      API_SESSION_TIMEOUT: ${GUACAMOLE_SESSION_TIMEOUT_MINUTES:-1440}
+    depends_on: [guacd]
+    restart: unless-stopped
+
+  guacd:
+    image: ghcr.io/dreamhunter2333/awsl-remotex-guacd:1.6.1
+    restart: unless-stopped
+
+  pve-vnc-proxy:
+    profiles: [pve]
+    image: ghcr.io/dreamhunter2333/pve-vnc-proxy:v0.1.0
+    environment:
+      PVE_HOST: ${PVE_HOST:-}
+      PVE_LISTEN: 0.0.0.0:5900
+      PVE_INSECURE: ${PVE_INSECURE:-false}
+      PVE_MAX_CONNS: ${PVE_MAX_CONNS:-256}
+    restart: unless-stopped
 ```
 
-将 32 字符输出设为 `GUACAMOLE_JSON_SECRET`，64 字符输出设为 `CREDENTIAL_KEY`，并设置高强度 `AUTH_PASSWORD`。留空 `AUTH_PASSWORD` 会禁用应用认证，只应在明确可信的网络中使用。
+生成密钥并写入同目录的 `.env`：
 
-从源码构建并启动：
+```dotenv
+AUTH_USERNAME=admin
+AUTH_PASSWORD=replace-with-a-strong-password
+GUACAMOLE_JSON_SECRET=replace-with-32-random-hex-characters
+CREDENTIAL_KEY=replace-with-64-random-hex-characters
+```
+
+两个随机值可分别通过 `openssl rand -hex 16` 和 `openssl rand -hex 32` 生成，并替换示例登录密码。`AUTH_PASSWORD` 留空会关闭应用认证，只适用于明确可信的网络。
+
+首次部署时，先初始化空的数据目录。应用以非 root 用户 `awsl` 运行；下面的一次性命令使用镜像内的用户和组为挂载目录设置权限，然后启动并检查状态：
 
 ```bash
-docker compose up -d --build
-docker compose ps
+docker compose pull
+mkdir -p ./data
+docker compose run --rm --no-deps --user root --entrypoint sh awsl-remotex \
+  -c 'chown awsl:awsl /app/data && chmod 750 /app/data'
+docker compose up -d
 curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 2 \
   http://127.0.0.1:8080/api/ready
-```
-
-如果不想本地编译，可直接使用发布镜像：
-
-```bash
-AWSL_REMOTEX_IMAGE=ghcr.io/dreamhunter2333/awsl-remotex:latest \
-  docker compose pull
-AWSL_REMOTEX_IMAGE=ghcr.io/dreamhunter2333/awsl-remotex:latest \
-  docker compose up -d --no-build
 ```
 
 访问 `http://localhost:8080`。服务只要超出可信内网范围，就应启用 HTTPS。固定版本、反向代理、升级和健康检查参见[部署文档](docs/deployment.md)。
 
 ## Kubernetes + Helm 部署
 
-Helm Chart 使用一个单副本 `StatefulSet`，将 Awsl RemoteX、Guacamole 与 `guacd` 放在同一个 Pod，并用 PVC 保存 SQLite：
+以下可选示例要求已准备好本地 Awsl RemoteX Helm Chart，且支持[部署文档](docs/deployment.md)中的参数。本项目未附带 Chart；没有本地 Chart 时请使用上面的 Docker Compose。命令从 `awsl-remotex/` Chart 目录的父目录执行，该目录应包含 `Chart.yaml`、`values.yaml` 和 `templates/`。预期部署结构为一个单副本 `StatefulSet`，将 Awsl RemoteX、Guacamole 与 `guacd` 放在同一个 Pod，并用 PVC 保存 SQLite：
 
 ```bash
-git clone https://github.com/dreamhunter2333/helm-charts.git
-cd helm-charts
 helm upgrade --install awsl-remotex ./awsl-remotex \
   --namespace default \
   --set-string auth.username=admin \
@@ -73,7 +110,7 @@ kubectl -n default port-forward service/awsl-remotex 8080:80
 
 可选的 `pve-vnc-proxy` 会把标准 VNC 连接转换为短期 PVE QEMU 控制台会话。代理本身无状态，不持久化 PVE Token；如果资产选择“保存密码”，RemoteX 会将 Token Secret 加密后存入 SQLite。Compose 启用 `pve` profile 后，资产地址填写 `pve-vnc-proxy:5900`；Helm 中它与 `guacd` 共享 Pod 网络，因此填写 `127.0.0.1:5900`。
 
-Docker `.env`：
+使用 Docker Compose 时，在 `.env` 中补充：
 
 ```dotenv
 PVE_HOST=https://pve.example.com:8006

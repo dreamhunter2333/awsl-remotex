@@ -31,25 +31,25 @@ Use the 32-character output for `GUACAMOLE_JSON_SECRET` and the 64-character out
 
 分别将 32 字符输出用于 `GUACAMOLE_JSON_SECRET`，64 字符输出用于 `CREDENTIAL_KEY`，不要复用为 `AUTH_PASSWORD`。
 
-## Compose-only values / Compose 专用变量
+## Compose values / Compose 参数
 
 | Variable | Default | Purpose / 用途 |
 | --- | --- | --- |
 | `GUACAMOLE_SESSION_TIMEOUT_MINUTES` | `1440` | Passed to Guacamole as `API_SESSION_TIMEOUT`; it is not read by the Go application / 作为 `API_SESSION_TIMEOUT` 传给 Guacamole，Go 应用不会读取 |
-| `AWSL_REMOTEX_IMAGE` | `awsl-remotex:local` | Set to a published image when running Compose with `--no-build` / 使用 `--no-build` 时指定发布镜像 |
+| `AWSL_REMOTEX_IMAGE` | `awsl-remotex:local` | Image override used only by the repository's development Compose file / 仅用于仓库开发版 Compose 的镜像覆盖项 |
 | `PVE_HOST` | empty | Required PVE API origin when the optional `pve` profile is enabled / 启用可选 `pve` profile 时必填的 PVE API 地址 |
 | `PVE_INSECURE` | `false` | Skip PVE certificate verification; trusted private networks only / 跳过 PVE 证书校验，仅限可信私网 |
 | `PVE_MAX_CONNS` | `256` | Maximum concurrent connections accepted by `pve-vnc-proxy` / PVE 代理最大并发连接数 |
 
-The checked-in [compose.yaml](../compose.yaml) supplies the internal upstream addresses. Its optional `pve` profile starts `pve-vnc-proxy`; the profile stays disabled during a normal deployment. `.env` is used only for Compose interpolation and is excluded from Git and Docker build contexts.
+The standalone Compose example in the root README uses published images. The checked-in [compose.yaml](../compose.yaml) additionally supports local source builds for development. Both provide internal upstream addresses and an optional `pve` profile; `.env` is excluded from Git and Docker build contexts.
 
-仓库中的 [compose.yaml](../compose.yaml) 已提供内部服务地址。`.env` 只用于 Compose 变量替换，且不会进入 Git 或 Docker 构建上下文。
-
-仓库中的 [compose.yaml](../compose.yaml) 通过可选的 `pve` profile 启动 `pve-vnc-proxy`，普通部署不会启用该 profile。完整配置参见[部署文档](deployment.md)。
+根目录 README 的独立 Compose 示例直接使用发布镜像；仓库中的 [compose.yaml](../compose.yaml) 还支持开发时从源码构建。两者都已配置内部服务地址和可选的 `pve` profile，`.env` 不会进入 Git 或 Docker 构建上下文。
 
 ## Helm values / Helm 参数
 
-The chart is maintained in [`dreamhunter2333/helm-charts`](https://github.com/dreamhunter2333/helm-charts/tree/main/awsl-remotex). Important value groups are:
+The optional Helm examples require a local Awsl RemoteX chart supporting the value groups below. A chart is not bundled with this project; these values do not apply directly to Docker Compose.
+
+可选的 Helm 示例要求本地已有支持以下参数的 Awsl RemoteX Chart。本项目未附带 Chart，这些参数不直接用于 Docker Compose。
 
 | Values path | Purpose / 用途 |
 | --- | --- |
@@ -67,9 +67,9 @@ The chart always renders one StatefulSet replica because SQLite is intentionally
 
 ## Persistent data / 持久数据
 
-The container stores SQLite data under `/app/data`. Keep `CREDENTIAL_KEY` unchanged after credentials have been saved. A missing or different key does not reveal plaintext; it makes existing encrypted credentials unusable.
+The container stores SQLite data under `/app/data` and runs as the non-root `awsl` user. Initialize a new bind-mounted data directory using the command in [Deployment](deployment.md#docker-compose). Keep `CREDENTIAL_KEY` unchanged after credentials have been saved. A missing or different key does not reveal plaintext; it makes existing encrypted credentials unusable.
 
-容器将 SQLite 数据保存在 `/app/data`。保存凭据后必须保持 `CREDENTIAL_KEY` 不变；密钥缺失或变化不会泄露明文，但会使已有加密凭据不可用。
+容器以非 root 用户 `awsl` 运行，将 SQLite 数据保存在 `/app/data`。首次使用绑定挂载时，按[部署文档](deployment.md#docker-compose)中的命令初始化数据目录权限。保存凭据后必须保持 `CREDENTIAL_KEY` 不变；密钥缺失或变化不会泄露明文，但会使已有加密凭据不可用。
 
 See [Operations](operations.md) for safe backup and restore procedures.
 

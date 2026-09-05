@@ -19,45 +19,82 @@ Awsl RemoteX intentionally does not include recording, playback, approval workfl
 
 ## Docker Compose
 
-Docker with Compose v2 is required. Clone the repository, create the environment file, and replace the example password and secrets:
+Docker with Compose v2 or later is required. A normal deployment does not require the source repository. Create a directory and save this as `compose.yaml`:
 
-```bash
-git clone https://github.com/dreamhunter2333/awsl-remotex.git
-cd awsl-remotex
-cp .env.example .env
-openssl rand -hex 16
-openssl rand -hex 32
+```yaml
+services:
+  awsl-remotex:
+    image: ghcr.io/dreamhunter2333/awsl-remotex:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
+      GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
+      GUACAMOLE_UPSTREAM: http://guacamole:8080
+      GUACD_ADDRESS: guacd:4822
+      SESSION_IDLE_TIMEOUT: ${SESSION_IDLE_TIMEOUT:-24h}
+    depends_on: [guacamole]
+    restart: unless-stopped
+
+  guacamole:
+    image: guacamole/guacamole:1.6.0
+    environment:
+      GUACD_HOSTNAME: guacd
+      JSON_ENABLED: "true"
+      JSON_SECRET_KEY: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
+      API_SESSION_TIMEOUT: ${GUACAMOLE_SESSION_TIMEOUT_MINUTES:-1440}
+    depends_on: [guacd]
+    restart: unless-stopped
+
+  guacd:
+    image: ghcr.io/dreamhunter2333/awsl-remotex-guacd:1.6.1
+    restart: unless-stopped
+
+  pve-vnc-proxy:
+    profiles: [pve]
+    image: ghcr.io/dreamhunter2333/pve-vnc-proxy:v0.1.0
+    environment:
+      PVE_HOST: ${PVE_HOST:-}
+      PVE_LISTEN: 0.0.0.0:5900
+      PVE_INSECURE: ${PVE_INSECURE:-false}
+      PVE_MAX_CONNS: ${PVE_MAX_CONNS:-256}
+    restart: unless-stopped
 ```
 
-Use the 32-character output as `GUACAMOLE_JSON_SECRET`, the 64-character output as `CREDENTIAL_KEY`, and set a strong `AUTH_PASSWORD`. Leaving `AUTH_PASSWORD` empty disables application authentication and should only be done on an intentionally trusted network.
+Create `.env` in the same directory:
 
-Start the stack from source:
+```dotenv
+AUTH_USERNAME=admin
+AUTH_PASSWORD=replace-with-a-strong-password
+GUACAMOLE_JSON_SECRET=replace-with-32-random-hex-characters
+CREDENTIAL_KEY=replace-with-64-random-hex-characters
+```
+
+Generate the two random values with `openssl rand -hex 16` and `openssl rand -hex 32`, respectively, and replace the example login password. An empty `AUTH_PASSWORD` disables application authentication and is suitable only for an intentionally trusted network.
+
+For a new installation, initialize the empty data directory before starting. The application runs as the non-root `awsl` user; the one-off command below grants it access to the mounted directory using the image's own user and group:
 
 ```bash
-docker compose up -d --build
-docker compose ps
+docker compose pull
+mkdir -p ./data
+docker compose run --rm --no-deps --user root --entrypoint sh awsl-remotex \
+  -c 'chown awsl:awsl /app/data && chmod 750 /app/data'
+docker compose up -d
 curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 2 \
   http://127.0.0.1:8080/api/ready
-```
-
-To use a published image instead of building locally:
-
-```bash
-AWSL_REMOTEX_IMAGE=ghcr.io/dreamhunter2333/awsl-remotex:latest \
-  docker compose pull
-AWSL_REMOTEX_IMAGE=ghcr.io/dreamhunter2333/awsl-remotex:latest \
-  docker compose up -d --no-build
 ```
 
 Open `http://localhost:8080`. Use HTTPS whenever the service is reachable beyond a trusted network. See [Deployment](docs/deployment.md) for version pinning, reverse proxies, upgrades, and health checks.
 
 ## Kubernetes with Helm
 
-The Helm chart runs one `StatefulSet` replica with Awsl RemoteX, Guacamole, and `guacd` in the same Pod and persists SQLite on a PVC:
+These optional examples require an existing local Awsl RemoteX Helm chart compatible with the values described in [Deployment](docs/deployment.md). A chart is not bundled with this project; use Docker Compose above if you do not have one. Run the commands from the parent of the `awsl-remotex/` chart directory, which must contain `Chart.yaml`, `values.yaml`, and `templates/`. The expected layout is one `StatefulSet` replica with Awsl RemoteX, Guacamole, and `guacd` in the same Pod, with SQLite on a PVC:
 
 ```bash
-git clone https://github.com/dreamhunter2333/helm-charts.git
-cd helm-charts
 helm upgrade --install awsl-remotex ./awsl-remotex \
   --namespace default \
   --set-string auth.username=admin \
@@ -73,7 +110,7 @@ Open `http://localhost:8080`. Ingress, existing Secrets, resource settings, and 
 
 The optional `pve-vnc-proxy` converts a normal VNC connection into a short-lived Proxmox VE QEMU console session. The proxy itself is stateless and does not persist PVE tokens. If the asset uses a saved password, RemoteX encrypts and stores its Token Secret in SQLite. With Compose, enable the `pve` profile and use `pve-vnc-proxy:5900` as the asset address. With Helm, enable `pveVncProxy` and use `127.0.0.1:5900` because all containers share the Pod network.
 
-Docker `.env`:
+For Docker Compose, append these values to `.env`:
 
 ```dotenv
 PVE_HOST=https://pve.example.com:8006

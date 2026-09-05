@@ -26,18 +26,16 @@ Helm can generate and retain these values in a Kubernetes Secret. The examples s
 
 ## Docker Compose
 
-### Build from source / 从源码构建
+Docker with Compose v2 or later is required. Use the standalone `compose.yaml` and `.env` examples in the root [README](../README.md) or [中文 README](../README.zh-CN.md). A normal deployment pulls published images and does not require the source repository. For a new installation, initialize the empty data directory for the image's non-root `awsl` user before starting:
+
+需要 Docker 和 Compose v2 或更高版本。普通部署直接使用根目录 [README](../README.zh-CN.md) 中的 `compose.yaml` 与 `.env` 示例拉取发布镜像，无需克隆源码。首次部署时，先为空的数据目录设置镜像内非 root 用户 `awsl` 的访问权限：
 
 ```bash
-git clone https://github.com/dreamhunter2333/awsl-remotex.git
-cd awsl-remotex
-cp .env.example .env
-```
-
-Edit `.env`, replace all placeholder values, then start / 编辑 `.env` 并替换全部占位值后启动：
-
-```bash
-docker compose up -d --build
+docker compose pull
+mkdir -p ./data
+docker compose run --rm --no-deps --user root --entrypoint sh awsl-remotex \
+  -c 'chown awsl:awsl /app/data && chmod 750 /app/data'
+docker compose up -d
 docker compose ps
 curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 2 \
   http://127.0.0.1:8080/api/ready
@@ -45,26 +43,11 @@ curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 2 
 
 Open `http://127.0.0.1:8080`. Application data is stored in `./data` and mounted at `/app/data`. 访问该地址即可，应用数据保存在 `./data`。
 
-### Use the published image / 使用发布镜像
-
-Set the application image in `.env`:
-
-```dotenv
-AWSL_REMOTEX_IMAGE=ghcr.io/dreamhunter2333/awsl-remotex:latest
-```
-
-Then pull and start without compiling / 拉取镜像并跳过本地编译：
-
-```bash
-docker compose pull
-docker compose up -d --no-build
-```
-
 `latest` tracks the latest stable release. Use a full tag such as `v0.2.25` for a reproducible deployment. Images support Linux `amd64` and `arm64`. `latest` 跟随稳定版；需要可复现部署时应固定完整版本。
 
 ## Proxmox VE VNC Proxy / Proxmox VE VNC 代理
 
-The optional [`pve-vnc-proxy`](https://github.com/dreamhunter2333/pve-vnc-proxy) turns a normal VNC connection into a temporary PVE QEMU console session. It receives the node, VMID, API Token ID, and Token Secret through VNC authentication, requests a console ticket, and bridges the PVE WebSocket. The proxy itself does not persist tokens or tickets and currently supports QEMU VMs only. When an asset uses a saved password, RemoteX encrypts its Token Secret and stores it in SQLite.
+The optional `pve-vnc-proxy` turns a normal VNC connection into a temporary PVE QEMU console session. It receives the node, VMID, API Token ID, and Token Secret through VNC authentication, requests a console ticket, and bridges the PVE WebSocket. The proxy itself does not persist tokens or tickets and currently supports QEMU VMs only. When an asset uses a saved password, RemoteX encrypts its Token Secret and stores it in SQLite.
 
 可选代理会把标准 VNC 连接转换成临时 PVE QEMU 控制台会话。它从 VNC 认证信息中读取节点、VMID、API Token ID 与 Secret，申请临时票据并桥接 PVE WebSocket；代理自身不持久化 Token 或票据，目前只支持 QEMU VM。资产选择“保存密码”时，RemoteX 会加密 Token Secret 并存入 SQLite。
 
@@ -110,11 +93,11 @@ PVE Windows 还需要在 VM 的 `Hardware` → `Display` 中启用 Clipboard `VN
 
 ### Install / 安装
 
-The chart currently lives in the Helm charts source repository / Chart 当前位于 Helm Charts 源码仓库：
+These examples require an existing local Awsl RemoteX chart that supports the values and resources described below. A chart is not bundled with this project. Place the chart in `./awsl-remotex/` with `Chart.yaml`, `values.yaml`, and `templates/`, and run all Helm commands from its parent directory. Use Docker Compose if you do not have a compatible local chart.
+
+以下示例要求本地已有支持下述参数和资源的 Awsl RemoteX Chart。本项目未附带 Chart。将 Chart 放在 `./awsl-remotex/` 目录下，包含 `Chart.yaml`、`values.yaml` 和 `templates/`；所有 Helm 命令从其父目录执行。没有兼容的本地 Chart 时请使用 Docker Compose。
 
 ```bash
-git clone https://github.com/dreamhunter2333/helm-charts.git
-cd helm-charts
 helm upgrade --install awsl-remotex ./awsl-remotex \
   --namespace default \
   --set-string auth.username=admin \
@@ -255,16 +238,15 @@ Docker image deployment:
 
 ```bash
 docker compose pull
-docker compose up -d --no-build
+docker compose up -d
 curl --fail --silent --show-error --retry 30 --retry-all-errors --retry-delay 2 \
   http://127.0.0.1:8080/api/ready
 ```
 
-Helm deployment:
+Helm deployment: replace the local chart directory with the version you intend to deploy, then run from its parent directory / Helm 部署：先将本地 Chart 目录更新为待部署版本，再从其父目录执行：
 
 ```bash
-git -C helm-charts pull --ff-only
-helm upgrade awsl-remotex ./helm-charts/awsl-remotex \
+helm upgrade awsl-remotex ./awsl-remotex \
   --namespace default \
   -f remotex-values.yaml \
   --wait --timeout 10m
