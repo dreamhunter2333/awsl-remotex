@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { AudioPlayer, InputStream } from "guacamole-common-js"
 
 import type { GuacamoleSDK } from "./guacamole-sdk"
 import {
@@ -57,6 +58,8 @@ function createSDK() {
   const touchpads: FakeMouse[] = []
   const readers: FakeStringReader[] = []
   const writers: FakeStringWriter[] = []
+  const audioContext = { state: "suspended", createBuffer: vi.fn(), resume: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) }
+  window.AudioContext = vi.fn(function () { return audioContext }) as unknown as typeof AudioContext
 
   class FakeDisplay {
     readonly element = new FakeElement()
@@ -80,6 +83,7 @@ function createSDK() {
     mouseStates: unknown[] = []
     sizes: Array<[number, number]> = []
     onclipboard: ((stream: unknown, mimetype: string) => void) | null = null
+    onaudio: ((stream: InputStream, mimetype: string) => AudioPlayer | null) | null = null
     onerror: ((status: { code: number; message?: string }) => void) | null = null
     onstatechange: ((state: number) => void) | null = null
     constructor() { clients.push(this) }
@@ -141,6 +145,11 @@ function createSDK() {
 
   const sdk = {
     API_VERSION: "1.6.0",
+    ArrayBufferReader: class {
+      ondata: ((data: ArrayBuffer) => void) | null = null
+      constructor(stream: InputStream) { stream.onblob = () => this.ondata?.(new ArrayBuffer(4)) }
+    },
+    RawAudioFormat: { parse: () => ({ bytesPerSample: 2, channels: 2, rate: 44100 }) },
     AudioPlayer: { getSupportedTypes: () => ["audio/L16"] },
     Client: FakeClient,
     Keyboard: FakeKeyboard,
@@ -150,7 +159,7 @@ function createSDK() {
     VideoPlayer: { getSupportedTypes: () => [] },
     WebSocketTunnel: class {},
   } as unknown as GuacamoleSDK
-  return { clients, keyboards, mice, readers, sdk, touchpads, writers }
+  return { audioContext, clients, keyboards, mice, readers, sdk, touchpads, writers }
 }
 
 describe("Guacamole direct session", () => {
@@ -223,6 +232,7 @@ describe("Guacamole direct session", () => {
     const ready = vi.fn()
     const ended = vi.fn()
     const activity = vi.fn()
+    const audioCapability = vi.fn()
     const clipboard = vi.fn()
     const revoke = vi.fn().mockResolvedValue(undefined)
     const writeClipboard = vi.fn().mockResolvedValue(undefined)
@@ -230,7 +240,7 @@ describe("Guacamole direct session", () => {
       displayHost as unknown as HTMLElement,
       displaySurface as unknown as HTMLElement,
       keyboardInput as unknown as HTMLTextAreaElement,
-      { isActive: () => true, onActivity: activity, onClipboard: clipboard, onDisplayResize: vi.fn(), onEnded: ended, onReady: ready },
+      { isActive: () => true, onActivity: activity, onAudioCapability: audioCapability, onClipboard: clipboard, onDisplayResize: vi.fn(), onEnded: ended, onReady: ready },
       {
         authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
         loadSDK: vi.fn().mockResolvedValue(runtime.sdk),
@@ -243,6 +253,18 @@ describe("Guacamole direct session", () => {
     await session.connect("Atlas Desktop", "/guacamole/?data=ticket")
     const client = runtime.clients[0]
     expect(new URLSearchParams(client.connectData).get("GUAC_ID")).toBe("Atlas Desktop")
+    expect(new URLSearchParams(client.connectData).getAll("GUAC_AUDIO")).toEqual(["audio/L16"])
+    expect(audioCapability).not.toHaveBeenCalledWith(true)
+    const audioStream = {} as InputStream
+    client.onaudio?.(audioStream, "audio/L16;rate=44100,channels=2")
+    expect(audioCapability).not.toHaveBeenCalledWith(true)
+    audioStream.onblob?.("AAAAAA==")
+    expect(audioCapability).toHaveBeenLastCalledWith(true)
+    session.setAudioEnabled(true)
+    expect(runtime.audioContext.resume).toHaveBeenCalledOnce()
+    session.setAudioEnabled(false)
+    expect(runtime.clients).toHaveLength(1)
+    expect(client.disconnected).toBe(false)
     expect(runtime.keyboards[0].element).toBe(keyboardInput.ownerDocument)
 
     client.onstatechange?.(3)
@@ -323,6 +345,8 @@ describe("Guacamole direct session", () => {
     expect(clipboard).toHaveBeenCalledWith("remote-to-local", true, "远程剪贴板")
 
     await session.disconnect()
+    expect(audioCapability).toHaveBeenLastCalledWith(false)
+    expect(runtime.audioContext.close).toHaveBeenCalledOnce()
     expect(client.disconnected).toBe(true)
     expect(revoke).toHaveBeenCalledWith("token")
     expect(ended).not.toHaveBeenCalled()
@@ -347,6 +371,7 @@ describe("Guacamole direct session", () => {
     )
 
     await session.connect("Clipboard Sync", "/guacamole/?data=ticket")
+    expect(new URLSearchParams(runtime.clients[0].connectData).getAll("GUAC_AUDIO")).toEqual(["audio/L16"])
     runtime.clients[0].onstatechange?.(3)
     await session.syncClipboard()
     expect(runtime.writers.at(-1)).toMatchObject({ text: "本机剪贴板", ended: true })

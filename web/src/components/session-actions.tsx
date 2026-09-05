@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react"
-import { ChevronDown, Clipboard, Command, Keyboard, Maximize2, Minimize2, Plus, Power, RefreshCw, ScanLine, Settings2, X } from "lucide-react"
+import { ChevronDown, Clipboard, Command, Keyboard, Maximize2, Minimize2, Plus, Power, RefreshCw, ScanLine, Settings2, Volume2, VolumeX, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { guacamoleKeys } from "@/lib/guacamole-keys"
@@ -33,6 +33,9 @@ interface SessionActionsProps {
   connected: boolean
   connecting: boolean
   fullscreen: boolean
+  audioEnabled: boolean
+  showAudio: boolean
+  onToggleAudio: () => void
   onClipboard: () => void
   onKeyboard: () => void
   onSendKeys: (keys: readonly number[]) => void
@@ -42,7 +45,7 @@ interface SessionActionsProps {
   onDisconnect: () => void
 }
 
-export function SessionActions({ active, connected, connecting, fullscreen, onClipboard, onKeyboard, onSendKeys, onCaptureKeys, onReconnect, onFullscreen, onDisconnect }: SessionActionsProps) {
+export function SessionActions({ active, connected, connecting, fullscreen, audioEnabled, showAudio, onToggleAudio, onClipboard, onKeyboard, onSendKeys, onCaptureKeys, onReconnect, onFullscreen, onDisconnect }: SessionActionsProps) {
   const { t } = usePreferences()
   const shortcutMenuRef = useRef<HTMLDetailsElement>(null)
   const actionMenuRef = useRef<HTMLDetailsElement>(null)
@@ -131,13 +134,18 @@ export function SessionActions({ active, connected, connecting, fullscreen, onCl
     <div data-local-keyboard className="relative flex shrink-0 items-center gap-0.5 border-l border-[var(--border)] px-1">
       <Button className="touch-session-action order-1" variant="ghost" size="icon" disabled={!connected} onClick={onKeyboard} aria-label={t("keyboard")} title={t("keyboard")}><Keyboard className="size-3.5" /></Button>
       <Button className="order-2" variant="ghost" size="icon" disabled={!connected} onClick={onClipboard} aria-label={t("clipboard")} title={t("clipboard")}><Clipboard className="size-3.5" /></Button>
-      <div className="order-4 hidden items-center gap-0.5 @[520px]:flex">
+      {showAudio && (
+        <Button className={audioEnabled ? "order-3 bg-[var(--accent-soft)] text-[var(--accent)]" : "order-3"} variant="ghost" size="icon" disabled={!active || connecting} onClick={onToggleAudio} aria-pressed={audioEnabled} aria-label={t(audioEnabled ? "disableAudio" : "enableAudio")} title={t(audioEnabled ? "disableAudio" : "enableAudio")}>
+          {audioEnabled ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+        </Button>
+      )}
+      <div className="order-5 hidden items-center gap-0.5 @[520px]:flex">
         <Button variant="ghost" size="icon" disabled={!active || connecting} onClick={onReconnect} aria-label={t("reconnect")} title={t("reconnect")}><RefreshCw className="size-3.5" /></Button>
         <Button variant="ghost" size="icon" disabled={!connected && !fullscreen} onClick={onFullscreen} aria-label={t(fullscreen ? "exitFullscreen" : "fullscreen")} title={t(fullscreen ? "exitFullscreen" : "fullscreen")}>{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}</Button>
         <Button className="ml-0.5 text-[var(--muted)] hover:bg-[var(--danger-soft)] hover:text-[var(--danger)]" variant="ghost" size="icon" disabled={!active} onClick={onDisconnect} aria-label={t("disconnect")} title={t("disconnect")}><Power className="size-3.5" /></Button>
       </div>
 
-      <details ref={shortcutMenuRef} className="order-3" onClick={(event) => { if (!connected) event.preventDefault() }} onToggle={() => {
+      <details ref={shortcutMenuRef} className="order-4" onClick={(event) => { if (!connected) event.preventDefault() }} onToggle={() => {
         if (shortcutMenuRef.current?.open) closeMenu(actionMenuRef)
         else stopCapture()
       }}>
@@ -180,12 +188,13 @@ export function SessionActions({ active, connected, connecting, fullscreen, onCl
         </div>
       </details>
 
-      <details ref={actionMenuRef} className="order-5 @[520px]:hidden" onToggle={() => {
+      <details ref={actionMenuRef} className="order-6 @[520px]:hidden" onToggle={() => {
         if (actionMenuRef.current?.open) closeMenu(shortcutMenuRef)
       }}>
         <summary className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-[var(--muted)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] [&::-webkit-details-marker]:hidden" aria-label={t("sessionActions")} title={t("sessionActions")}><Settings2 className="size-4" /></summary>
         <div className="absolute right-1 top-[calc(100%+4px)] z-50 min-w-32 rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] p-1 shadow-lg">
           <button type="button" disabled={!connected} onClick={() => runAction(onClipboard)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40"><Clipboard className="size-3.5" />{t("clipboard")}</button>
+          {showAudio && <button type="button" disabled={!active || connecting} aria-pressed={audioEnabled} onClick={() => runAction(onToggleAudio)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40">{audioEnabled ? <Volume2 className="size-3.5 text-[var(--accent)]" /> : <VolumeX className="size-3.5" />}{t(audioEnabled ? "disableAudio" : "enableAudio")}</button>}
           <button type="button" disabled={!active || connecting} onClick={() => runAction(onReconnect)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40"><RefreshCw className="size-3.5" />{t("reconnect")}</button>
           <button type="button" disabled={!connected && !fullscreen} onClick={() => runAction(onFullscreen)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface-hover)] disabled:opacity-40">{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}{t(fullscreen ? "exitFullscreen" : "fullscreen")}</button>
           <button type="button" disabled={!active} onClick={() => runAction(onDisconnect)} className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-xs text-[var(--danger)] hover:bg-[var(--danger-soft)] disabled:opacity-40"><Power className="size-3.5" />{t("disconnect")}</button>

@@ -13,12 +13,15 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({})
   const [connectingIDs, setConnectingIDs] = useState<Set<string>>(() => new Set())
   const [connectedIDs, setConnectedIDs] = useState<Set<string>>(() => new Set())
+  const [audioEnabledIDs, setAudioEnabledIDs] = useState<Set<string>>(() => new Set())
+  const [audioSupportedIDs, setAudioSupportedIDs] = useState<Set<string>>(() => new Set())
   const [idleClosed, setIdleClosed] = useState("")
   const sessionsRef = useRef<string[]>([])
   const activeRef = useRef<string | undefined>(undefined)
   const urlsRef = useRef<Record<string, string>>({})
   const activityRef = useRef<Record<string, number>>({})
   const handlesRef = useRef(new Map<string, SessionHandle>())
+  const audioEnabledRef = useRef(new Set<string>())
   const connectingRef = useRef(new Set<string>())
   const generationsRef = useRef(new Map<string, number>())
   const readyResolversRef = useRef(new Map<string, () => void>())
@@ -69,6 +72,25 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     })
   }, [])
 
+  const setAudioEnabled = useCallback((id: string, enabled: boolean) => {
+    const next = new Set(audioEnabledRef.current)
+    if (enabled) next.add(id)
+    else next.delete(id)
+    audioEnabledRef.current = next
+    setAudioEnabledIDs(next)
+  }, [])
+
+  const setAudioSupported = useCallback((id: string, supported: boolean) => {
+    if (!supported) setAudioEnabled(id, false)
+    setAudioSupportedIDs((current) => {
+      if (current.has(id) === supported) return current
+      const next = new Set(current)
+      if (supported) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [setAudioEnabled])
+
   const connect = useCallback((asset: Asset) => {
     if (connectingRef.current.has(asset.id)) return
     setConnected(asset.id, false)
@@ -116,8 +138,9 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     updateURLs((urls) => omitKey(urls, id))
     setConnectionErrors((errors) => omitKey(errors, id))
     delete activityRef.current[id]
+    setAudioSupported(id, false)
     setConnected(id, false)
-  }, [resolveReady, setConnected, updateSessions, updateURLs])
+  }, [resolveReady, setAudioSupported, setConnected, updateSessions, updateURLs])
 
   const reconnect = useCallback((asset: Asset) => {
     setConnected(asset.id, false)
@@ -131,6 +154,13 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     }
     connect(asset)
   }, [connect, resolveReady, setConnected, updateURLs])
+
+  const toggleAudio = useCallback((asset: Asset) => {
+    const enabled = !audioEnabledRef.current.has(asset.id)
+    handlesRef.current.get(asset.id)?.setAudioEnabled(enabled)
+    setAudioEnabled(asset.id, enabled)
+    markActivity(asset.id)
+  }, [markActivity, setAudioEnabled])
 
   const open = useCallback((asset: Asset) => {
     const next = sessionsRef.current.includes(asset.id) ? sessionsRef.current : [...sessionsRef.current, asset.id]
@@ -186,6 +216,9 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     updateURLs(() => ({}))
     setConnectionErrors({})
     setConnectedIDs(new Set())
+    audioEnabledRef.current = new Set()
+    setAudioEnabledIDs(new Set())
+    setAudioSupportedIDs(new Set())
     activityRef.current = {}
     clearSessions()
   }, [updateSessions, updateURLs])
@@ -236,11 +269,15 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     connectionErrors,
     connectingIDs,
     connectedIDs,
+    audioEnabledIDs,
+    audioSupportedIDs,
+    setAudioSupported,
     idleClosed,
     clearIdleClosed: () => setIdleClosed(""),
     open,
     close,
     reconnect,
+    toggleAudio,
     ended,
     ready: readySession,
     activity: markActivity,

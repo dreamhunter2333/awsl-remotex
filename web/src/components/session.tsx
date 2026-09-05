@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 export interface SessionHandle {
   captureKeys: (onComplete: (keys: readonly number[]) => void) => (() => void) | undefined
   disconnect: () => Promise<void>
+  setAudioEnabled: (enabled: boolean) => void
   sendClipboard: (text: string) => boolean
   showKeyboard: () => boolean
   sendKeys: (keys: readonly number[]) => boolean
@@ -26,6 +27,7 @@ interface SessionViewportProps {
   onSessionEnded: (message: string) => void
   onReady: () => void
   onActivity: () => void
+  onAudioCapability: (supported: boolean) => void
   onClipboard: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
 }
 
@@ -39,6 +41,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   onSessionEnded,
   onReady,
   onActivity,
+  onAudioCapability,
   onClipboard,
 }, ref) {
   const { t } = usePreferences()
@@ -53,6 +56,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   const onSessionEndedRef = useRef(onSessionEnded)
   const onReadyRef = useRef(onReady)
   const onActivityRef = useRef(onActivity)
+  const onAudioCapabilityRef = useRef(onAudioCapability)
   const onClipboardRef = useRef(onClipboard)
   const notifyResizeRef = useRef<() => void>(() => undefined)
 
@@ -60,6 +64,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   onSessionEndedRef.current = onSessionEnded
   onReadyRef.current = onReady
   onActivityRef.current = onActivity
+  onAudioCapabilityRef.current = onAudioCapability
   onClipboardRef.current = onClipboard
 
   const failureMessage = (failure: GuacamoleFailure) => {
@@ -83,6 +88,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   useImperativeHandle(ref, () => ({
     captureKeys: (onComplete) => controllerRef.current?.captureKeys(onComplete),
     disconnect: () => controllerRef.current?.disconnect() ?? Promise.resolve(),
+    setAudioEnabled: (enabled) => controllerRef.current?.setAudioEnabled(enabled),
     sendClipboard: (text) => controllerRef.current?.setClipboard(text) ?? false,
     showKeyboard: () => controllerRef.current?.focus() ?? false,
     sendKeys: (keys) => controllerRef.current?.sendKeys(keys) ?? false,
@@ -114,6 +120,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
       isRemoteCursor: () => vncSettingsRef.current?.cursor === "remote",
       isWheelReversed: () => vncSettingsRef.current?.wheelDirection === "reverse",
       onActivity: () => onActivityRef.current(),
+      onAudioCapability: (supported) => onAudioCapabilityRef.current(supported),
       onClipboard: (direction, succeeded, text) => onClipboardRef.current(direction, succeeded, text),
       onDisplayResize: notifyResize,
       onEnded: (failure) => {

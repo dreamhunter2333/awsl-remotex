@@ -276,6 +276,9 @@ export default function App() {
               connected={activeConnected}
               connecting={activeConnecting}
               fullscreen={fullscreen}
+              audioEnabled={Boolean(activeAsset && session.audioEnabledIDs.has(activeAsset.id))}
+              showAudio={activeAsset?.protocol === "rdp" && session.audioSupportedIDs.has(activeAsset.id)}
+              onToggleAudio={() => activeAsset && session.toggleAudio(activeAsset)}
               onClipboard={() => {
                 setClipboardOpen(true)
                 if (activeAsset) void session.syncClipboard(activeAsset.id)
@@ -306,6 +309,7 @@ export default function App() {
                     onSessionEnded={(message) => session.ended(id, message)}
                     onReady={() => session.ready(id)}
                     onActivity={() => session.activity(id)}
+                    onAudioCapability={(supported) => session.setAudioSupported(id, supported)}
                     onClipboard={(direction, succeeded, text) => showClipboardToast(id, direction, succeeded, text)}
                   />
                 </div>

@@ -1,11 +1,14 @@
 export const GUACAMOLE_SDK_VERSION = "1.6.0"
 export const GUACAMOLE_SDK_SRC = `/vendor/guacamole/${GUACAMOLE_SDK_VERSION}/all.min.js`
 
-export type GuacamoleSDK = typeof import("guacamole-common-js") & { API_VERSION: string }
+export type GuacamoleSDK = typeof import("guacamole-common-js") & {
+  API_VERSION: string
+}
 
 declare global {
   interface Window {
     Guacamole?: GuacamoleSDK
+    webkitAudioContext?: typeof AudioContext
   }
 }
 

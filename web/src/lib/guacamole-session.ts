@@ -1,6 +1,7 @@
 import type { Client, Event as GuacamoleEvent, Mouse, Status } from "guacamole-common-js"
 
 import { sendKeyCombination, type KeyEventSender } from "./guacamole-keys"
+import { GuacamoleAudioPlayer } from "./guacamole-audio"
 import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacamole-sdk"
 
 const CAPS_LOCK_HOLD_MS = 150
@@ -115,6 +116,7 @@ interface GuacamoleSessionCallbacks {
   isRemoteCursor?: () => boolean
   isWheelReversed?: () => boolean
   onActivity: () => void
+  onAudioCapability?: (supported: boolean) => void
   onClipboard?: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
   onDisplayResize: () => void
   onEnded: (failure: GuacamoleFailure) => void
@@ -264,6 +266,10 @@ function getDocumentKeyboard(sdk: GuacamoleSDK, document: Document) {
 
 export class GuacamoleSession implements KeyEventSender {
   private abortController?: AbortController
+  private audioTypes: readonly string[] = []
+  private audioContext?: AudioContext
+  private audioEnabled = false
+  private readonly audioPlayers = new Set<GuacamoleAudioPlayer>()
   private client?: Client
   private connected = false
   private generation = 0
@@ -300,13 +306,14 @@ export class GuacamoleSession implements KeyEventSender {
       if (!ticket) throw new GuacamoleSessionError("authentication", "Guacamole ticket is missing")
       const sdk = await (this.dependencies.loadSDK ?? loadGuacamoleSDK)()
       if (generation !== this.generation) return
+      this.sdk = sdk
+      this.audioTypes = sdk.AudioPlayer.getSupportedTypes()
       const auth = await (this.dependencies.authenticate ?? authenticateGuacamole)(ticket, this.abortController.signal)
       if (generation !== this.generation) {
         void (this.dependencies.revoke ?? revokeGuacamoleSession)(auth.authToken)
         return
       }
 
-      this.sdk = sdk
       this.token = auth.authToken
       this.ensureKeyboard()
       this.createClient(connectionID, auth)
@@ -334,6 +341,19 @@ export class GuacamoleSession implements KeyEventSender {
   focus() {
     this.keyboardInput.focus({ preventScroll: true })
     return this.keyboardInput.ownerDocument.activeElement === this.keyboardInput
+  }
+
+  setAudioEnabled(enabled: boolean) {
+    this.audioEnabled = enabled
+    for (const player of this.audioPlayers) player.setEnabled(enabled)
+    if (enabled && this.audioContext && this.audioContext.state !== "running") {
+      const context = this.audioContext
+      void context.resume().catch(() => {
+        if (this.audioContext !== context) return
+        this.setAudioEnabled(false)
+        this.callbacks.onAudioCapability?.(false)
+      })
+    }
   }
 
   async syncClipboard() {
@@ -485,6 +505,22 @@ export class GuacamoleSession implements KeyEventSender {
     const touchpad = new sdk.Mouse.Touchpad(displayElement)
     touchpad.onEach(["mousedown", "mousemove", "mouseup"], (event) => sendMouse(event, false, true))
 
+    client.onaudio = (stream, mimetype) => {
+      const format = sdk.RawAudioFormat.parse(mimetype)
+      const Context = window.AudioContext ?? window.webkitAudioContext
+      if (!format || !Context) return { sync() {} }
+      try {
+        this.audioContext ??= new Context()
+        const player = new GuacamoleAudioPlayer(sdk, stream, format, this.audioContext, () => {
+          if (this.client === client) this.callbacks.onAudioCapability?.(true)
+        })
+        player.setEnabled(this.audioEnabled)
+        this.audioPlayers.add(player)
+        return player
+      } catch {
+        return { sync() {} }
+      }
+    }
     client.onclipboard = (stream, mimetype) => {
       if (!mimetype.startsWith("text/")) return
       const reader = new sdk.StringReader(stream)
@@ -513,7 +549,7 @@ export class GuacamoleSession implements KeyEventSender {
       width: Math.max(1, Math.floor(this.displayHost.clientWidth * ratio)),
       height: Math.max(1, Math.floor(this.displayHost.clientHeight * ratio)),
       dpi: Math.max(96, Math.floor(96 * ratio)),
-      audio: sdk.AudioPlayer.getSupportedTypes(),
+      audio: this.audioTypes,
       video: sdk.VideoPlayer.getSupportedTypes(),
     }))
   }
@@ -525,6 +561,12 @@ export class GuacamoleSession implements KeyEventSender {
   }
 
   private async releaseCurrent() {
+    this.setAudioEnabled(false)
+    this.audioPlayers.clear()
+    const audioContext = this.audioContext
+    this.audioContext = undefined
+    if (audioContext) void audioContext.close().catch(() => undefined)
+    this.callbacks.onAudioCapability?.(false)
     this.abortController?.abort()
     this.abortController = undefined
     this.connected = false
@@ -533,6 +575,7 @@ export class GuacamoleSession implements KeyEventSender {
     const client = this.client
     this.client = undefined
     if (client) {
+      client.onaudio = () => ({ sync() {} })
       client.onclipboard = null
       client.onerror = null
       client.onstatechange = null
