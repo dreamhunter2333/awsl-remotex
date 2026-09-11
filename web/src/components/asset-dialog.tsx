@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react"
+import { useEffect, useId, useRef, useState, type FormEvent } from "react"
 import { Activity, ChevronDown, FolderPlus, SlidersHorizontal, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   onDelete: (asset: Asset) => Promise<void>
 }) {
   const { t } = usePreferences()
+  const titleID = useId()
   const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const [protocol, setProtocol] = useState<Protocol>(asset?.protocol ?? "ssh")
@@ -24,6 +25,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   const [customVNCSettings, setCustomVNCSettings] = useState(Boolean(asset?.settings?.vnc))
   const [vncAdvancedOpen, setVNCAdvancedOpen] = useState(Boolean(asset?.settings?.vnc))
   const [submitting, setSubmitting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ConnectionTest>()
   const [error, setError] = useState("")
@@ -36,6 +38,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitting || deleting) return
     const form = event.currentTarget
     setSubmitting(true)
     setError("")
@@ -52,6 +55,19 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
       setError(reason instanceof Error ? reason.message : t("addAssetFailed"))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!asset || deleting || submitting || !window.confirm(t("confirmDelete", { name: asset.name }))) return
+    setDeleting(true)
+    setError("")
+    try {
+      await onDelete(asset)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("deleteAssetFailed"))
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -83,10 +99,10 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   )
 
   return (
-    <dialog ref={setDialog} onClose={onClose} className="m-auto w-[min(460px,calc(100%-2rem))] rounded-2xl border border-[var(--border-strong)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[0_24px_80px_var(--shadow)] backdrop:bg-[var(--backdrop)]">
+    <dialog ref={setDialog} onClose={onClose} aria-labelledby={titleID} className="m-auto w-[min(460px,calc(100%-2rem))] rounded-2xl border border-[var(--border-strong)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[0_24px_80px_var(--shadow)] backdrop:bg-[var(--backdrop)]">
       <form ref={formRef} onSubmit={handleSubmit} className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
-          <h2 className="text-base font-semibold">{asset ? t("editAsset") : t("addRemoteAsset")}</h2>
+          <h2 id={titleID} className="text-base font-semibold">{asset ? t("editAsset") : t("addRemoteAsset")}</h2>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label={t("close")}><X className="size-4" /></Button>
         </div>
         <div className="space-y-3.5">
@@ -202,16 +218,14 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
           {error && <p role="alert" className="text-xs text-[var(--danger)]">{error}</p>}
           {testResult && <p role="status" className={cn("text-xs", testResult.reachable ? "text-[var(--green)]" : "text-[var(--danger)]")}>{testResult.reachable ? t("connectionReachable", { latency: testResult.latencyMs }) : t("connectionUnreachable", { message: testResult.message })}</p>}
         </div>
-        <div className="mt-5 flex items-center gap-2">
+        <div className="mt-5 flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={testing} onClick={testConnection}><Activity className="size-3.5" />{testing ? t("testingConnection") : t("testConnection")}</Button>
           {asset && (
-            <>
-              <Button type="button" variant="danger" size="sm" onClick={async () => { if (window.confirm(t("confirmDelete", { name: asset.name }))) await onDelete(asset) }}><Trash2 className="size-3.5" />{t("deleteAsset")}</Button>
-            </>
+            <Button type="button" variant="danger" size="sm" disabled={deleting || submitting} onClick={handleDelete}><Trash2 className="size-3.5" />{deleting ? t("deleting") : t("deleteAsset")}</Button>
           )}
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex w-full justify-end gap-2 sm:w-auto">
             <Button type="button" variant="outline" size="sm" onClick={onClose}>{t("cancel")}</Button>
-            <Button type="submit" size="sm" disabled={submitting}><FolderPlus className="size-3.5" />{submitting ? (asset ? t("saving") : t("adding")) : (asset ? t("saveChanges") : t("addAsset"))}</Button>
+            <Button type="submit" size="sm" disabled={submitting || deleting}><FolderPlus className="size-3.5" />{submitting ? (asset ? t("saving") : t("adding")) : (asset ? t("saveChanges") : t("addAsset"))}</Button>
           </div>
         </div>
       </form>

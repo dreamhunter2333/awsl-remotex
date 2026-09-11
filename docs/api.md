@@ -12,7 +12,7 @@ All responses use JSON except successful `204 No Content` operations. Error resp
 | `GET` | `/api/ready` | SQLite, `guacd`, and Guacamole readiness / SQLite、`guacd` 与 Guacamole 就绪检查 |
 | `GET` | `/api/auth/status` | Authentication state and `sessionIdleSeconds` / 认证状态与空闲超时秒数 |
 | `POST` | `/api/auth/login` | Body: `{"username":"...","password":"..."}` / 登录 |
-| `DELETE` | `/api/auth/session` | Clear the login cookie / 退出登录 |
+| `DELETE` | `/api/auth/session` | Revoke the current session and clear its cookie / 撤销当前会话并清除 Cookie |
 
 ## Asset shape / 资产结构
 

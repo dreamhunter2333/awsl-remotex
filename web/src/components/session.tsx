@@ -52,6 +52,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   const keyboardInputRef = useRef<HTMLTextAreaElement>(null)
   const controllerRef = useRef<GuacamoleSession>(null)
   const activeRef = useRef(active)
+  const assetRef = useRef(asset)
   const vncSettingsRef = useRef(asset.settings?.vnc)
   const onSessionEndedRef = useRef(onSessionEnded)
   const onReadyRef = useRef(onReady)
@@ -61,6 +62,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   const notifyResizeRef = useRef<() => void>(() => undefined)
 
   activeRef.current = active
+  assetRef.current = asset
   onSessionEndedRef.current = onSessionEnded
   onReadyRef.current = onReady
   onActivityRef.current = onActivity
@@ -149,15 +151,15 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
 
   useEffect(() => {
     setFrameReady(false)
-    vncSettingsRef.current = asset.settings?.vnc
+    vncSettingsRef.current = assetRef.current.settings?.vnc
     const controller = controllerRef.current
     if (!controller || !connectionURL) {
       void controller?.disconnect()
       return
     }
-    void controller.connect(asset.name, connectionURL)
+    void controller.connect(assetRef.current.name, connectionURL)
     return () => { void controller.disconnect() }
-  }, [asset.name, connectionURL])
+  }, [connectionURL])
 
   useEffect(() => {
     if (!active || !frameReady) return
@@ -166,7 +168,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
     const supportsClipboardChange = clipboard && "onclipboardchange" in clipboard
     notifyResizeRef.current()
     syncClipboard()
-    controllerRef.current?.focus()
+    if (!document.activeElement?.closest('[role="tablist"]')) controllerRef.current?.focus()
     if (supportsClipboardChange) clipboard.addEventListener("clipboardchange", syncClipboard)
     window.addEventListener("focus", syncClipboard)
     return () => {

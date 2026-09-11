@@ -30,8 +30,8 @@ func (server *Server) login(writer http.ResponseWriter, request *http.Request) {
 	writer.WriteHeader(http.StatusNoContent)
 }
 
-func (server *Server) logout(writer http.ResponseWriter, _ *http.Request) {
-	server.auth.Logout(writer)
+func (server *Server) logout(writer http.ResponseWriter, request *http.Request) {
+	server.auth.Logout(writer, request)
 	writer.WriteHeader(http.StatusNoContent)
 }
 
@@ -65,7 +65,7 @@ func (server *Server) ready(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	_ = response.Body.Close()
-	if response.StatusCode >= http.StatusInternalServerError {
+	if response.StatusCode != http.StatusOK {
 		writeError(writer, http.StatusServiceUnavailable, "Guacamole unavailable")
 		return
 	}

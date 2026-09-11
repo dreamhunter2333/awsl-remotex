@@ -24,6 +24,8 @@ export default function App() {
   const [selectedAsset, setSelectedAsset] = useState<string>()
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [loggingOut, setLoggingOut] = useState(false)
+  const loggingOutRef = useRef(false)
   const [error, setError] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset>()
@@ -37,7 +39,7 @@ export default function App() {
   const sessionLayoutRef = useRef<HTMLElement>(null)
   const session = useSessions(
     assets,
-    Boolean(authStatus?.authenticated && !loading),
+    Boolean(authStatus?.authenticated && !loading && !loggingOut),
     (authStatus?.sessionIdleSeconds ?? 86_400) * 1_000,
     t("connectionFailed"),
     t("sessionEnded"),
@@ -85,7 +87,8 @@ export default function App() {
     return [...result.entries()]
   }, [assets, query])
 
-  const activeAsset = assets.find((asset) => asset.id === session.activeSession)
+  const assetsByID = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
+  const activeAsset = assetsByID.get(session.activeSession ?? "")
   const activeConnected = Boolean(activeAsset && session.connectedIDs.has(activeAsset.id))
   const activeConnecting = Boolean(activeAsset && session.connectingIDs.has(activeAsset.id))
 
@@ -130,10 +133,27 @@ export default function App() {
   }
 
   const logout = async () => {
-    await api.logout()
-    session.reset()
-    setAssets([])
-    setAuthStatus({ required: true, authenticated: false, sessionIdleSeconds: authStatus?.sessionIdleSeconds ?? 86_400 })
+    if (loggingOutRef.current) return
+    loggingOutRef.current = true
+    setLoggingOut(true)
+    setError("")
+    try {
+      await session.reset()
+      await api.logout()
+      await session.reset()
+      setAssets([])
+      setSessionClipboards({})
+      setClipboardOpen(false)
+      setClipboardToast(undefined)
+      closeDialog()
+      setAuthStatus({ required: true, authenticated: false, sessionIdleSeconds: authStatus?.sessionIdleSeconds ?? 86_400 })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("connectionFailed"))
+      setSidebarCollapsed(false)
+    } finally {
+      loggingOutRef.current = false
+      setLoggingOut(false)
+    }
   }
 
   const toggleFullscreen = async () => {
@@ -152,6 +172,9 @@ export default function App() {
     setClipboardToast({ message, succeeded })
   }
 
+  if (loggingOut) {
+    return <LoadingScreen message={t("signingOut")} error={false} />
+  }
   if (!authStatus) {
     return <LoadingScreen message={error || t("checkingAuthentication")} error={Boolean(error)} />
   }
@@ -161,11 +184,12 @@ export default function App() {
 
   return (
     <div className="app-shell flex h-dvh flex-col overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--panel)] px-3.5">
+      <header data-local-keyboard className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--panel)] px-3.5 sm:gap-2">
         <span className="min-w-0 truncate text-sm font-semibold tracking-[-0.025em]">Awsl RemoteX</span>
         <Button
           variant="ghost"
           size="icon"
+          className="size-9 shrink-0 sm:size-7"
           onClick={() => setSidebarCollapsed((value) => !value)}
           aria-label={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
           title={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
@@ -179,20 +203,20 @@ export default function App() {
           rel="noreferrer"
           aria-label={`Awsl RemoteX ${__APP_VERSION__} · GitHub`}
           title="GitHub"
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[10px] font-medium tabular-nums text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="inline-flex size-9 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 font-mono text-[10px] font-medium tabular-nums text-[var(--muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:h-7 sm:w-auto"
         >
           <GitHubMark className="size-3.5 shrink-0" />
-          {__APP_VERSION__}
+          <span className="hidden sm:inline">{__APP_VERSION__}</span>
         </a>
         <PreferenceControls />
-        {authStatus.required && <Button variant="danger" size="icon" onClick={logout} aria-label={t("logout")} title={t("logout")}><LogOut className="size-3.5" /></Button>}
+        {authStatus.required && <Button variant="danger" size="icon" className="size-9 shrink-0 sm:size-7" onClick={logout} aria-label={t("logout")} title={t("logout")}><LogOut className="size-3.5" /></Button>}
       </header>
 
       <div className={cn(
         "relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)] transition-[grid-template-columns] duration-200",
         !sidebarCollapsed && "sm:grid-cols-[260px_minmax(0,1fr)]",
       )}>
-        <aside className={cn(
+        <aside data-local-keyboard className={cn(
           "absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] min-w-0 flex-col overflow-hidden bg-[var(--panel)] shadow-xl transition-transform duration-200 sm:static sm:w-auto sm:shadow-none",
           sidebarCollapsed ? "-translate-x-full border-r-0 sm:translate-x-0" : "translate-x-0 border-r border-[var(--border)]",
         )}>
@@ -244,9 +268,9 @@ export default function App() {
 
         <main ref={sessionLayoutRef} className="@container col-start-2 flex min-w-0 flex-col bg-[var(--canvas)]">
           <div className="flex h-9 shrink-0 border-b border-[var(--border)] bg-[var(--surface)]">
-            <div role="tablist" className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div role="tablist" data-local-keyboard className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {session.sessions.map((id) => {
-                const asset = assets.find((item) => item.id === id)
+                const asset = assetsByID.get(id)
                 if (!asset) return null
                 const meta = protocolMeta[asset.protocol]
                 const isActive = session.activeSession === id
@@ -258,7 +282,22 @@ export default function App() {
                     <button
                       type="button"
                       role="tab"
+                      id={`session-tab-${id}`}
+                      aria-controls={`session-panel-${id}`}
                       aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
+                      onKeyDown={(event) => {
+                        const index = session.sessions.indexOf(id)
+                        const last = session.sessions.length - 1
+                        const next = event.key === "Home" ? 0 : event.key === "End" ? last
+                          : event.key === "ArrowLeft" ? (index + last) % (last + 1)
+                          : event.key === "ArrowRight" ? (index + 1) % (last + 1) : undefined
+                        if (next === undefined) return
+                        event.preventDefault()
+                        const nextID = session.sessions[next]
+                        session.setActiveSession(nextID)
+                        document.getElementById(`session-tab-${nextID}`)?.focus()
+                      }}
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => session.setActiveSession(id)}
                       className="grid h-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
@@ -293,11 +332,20 @@ export default function App() {
           </div>
 
           <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
+            {session.sessions.length === 0 && (
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+                <p className="text-sm font-medium text-[var(--muted)]">{t("noSession")}</p>
+                <p className="max-w-sm text-xs leading-5 text-[var(--subtle)]">{t("connectHint")}</p>
+                <Button variant="outline" size="sm" onClick={() => assets.length ? setSidebarCollapsed(false) : openDialog()}>
+                  {assets.length ? t("expandSidebar") : t("addAsset")}
+                </Button>
+              </div>
+            )}
             {session.sessions.map((id) => {
-              const asset = assets.find((item) => item.id === id)
+              const asset = assetsByID.get(id)
               if (!asset) return null
               return (
-                <div key={id} className={cn("absolute inset-0", session.activeSession === id ? "visible z-10" : "invisible pointer-events-none")}>
+                <div key={id} id={`session-panel-${id}`} role="tabpanel" aria-labelledby={`session-tab-${id}`} className={cn("absolute inset-0", session.activeSession === id ? "visible z-10" : "invisible pointer-events-none")}>
                   <SessionViewport
                     ref={(handle) => session.registerHandle(id, handle)}
                     active={session.activeSession === id}

@@ -39,9 +39,9 @@ function PreferenceSelect({ icon: Icon, label, value, onChange, options }: {
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger aria-label={label} title={label}>
+      <SelectTrigger aria-label={label} title={label} className="size-9 shrink-0 justify-center px-0 sm:h-7 sm:w-auto sm:px-2 [&>svg:last-child]:hidden sm:[&>svg:last-child]:block">
         <Icon className="size-3.5 shrink-0 text-[var(--muted)]" />
-        <SelectValue />
+        <span className="hidden sm:inline"><SelectValue /></span>
       </SelectTrigger>
       <SelectContent align="end">
         {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}

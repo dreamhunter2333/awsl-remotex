@@ -79,6 +79,7 @@ export function revokeGuacamoleSession(token: string) {
     method: "DELETE",
     headers: { "Guacamole-Token": token },
     keepalive: true,
+    signal: AbortSignal.timeout(3_000),
   }).then(() => undefined, () => undefined)
 }
 

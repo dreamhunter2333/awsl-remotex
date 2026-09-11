@@ -78,14 +78,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   authStatus: () => request<AuthStatus>("/api/auth/status"),
   login: (username: string, password: string) => request<void>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
-  logout: () => request<void>("/api/auth/session", { method: "DELETE" }),
+  logout: () => request<void>("/api/auth/session", { method: "DELETE", signal: AbortSignal.timeout(10_000) }),
   listAssets: () => request<Asset[]>("/api/assets"),
   createAsset: (input: AssetInput) =>
     request<Asset>("/api/assets", { method: "POST", body: JSON.stringify(input) }),
   updateAsset: (id: string, input: AssetInput) =>
     request<Asset>(`/api/assets/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  connectAsset: (id: string, theme: "dark" | "light") =>
-    request<ConnectionTicket>(`/api/assets/${id}/connect?theme=${theme}`, { method: "POST" }),
+  connectAsset: (id: string, theme: "dark" | "light", signal?: AbortSignal) =>
+    request<ConnectionTicket>(`/api/assets/${id}/connect?theme=${theme}`, { method: "POST", signal }),
   testAsset: (asset: AssetInput, assetId?: string) =>
     request<ConnectionTest>("/api/assets/test", { method: "POST", body: JSON.stringify({ assetId, asset }) }),
   deleteAsset: (id: string) => request<void>(`/api/assets/${id}`, { method: "DELETE" }),

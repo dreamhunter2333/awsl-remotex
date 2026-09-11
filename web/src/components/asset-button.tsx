@@ -27,7 +27,12 @@ export function AssetButton({ asset, active, selected, onClick, onDoubleClick, o
         active && "border-[var(--border-strong)] bg-[var(--accent-soft)]",
       )}
     >
-      <button type="button" onClick={onClick} onDoubleClick={onDoubleClick} title={t("doubleClickConnect")} className="grid w-full grid-cols-[32px_minmax(0,1fr)] items-center gap-2 rounded-lg px-1.5 py-1.5 pr-8 text-left outline-none">
+      <button type="button" onClick={onClick} onDoubleClick={onDoubleClick} onKeyDown={(event) => {
+        if (event.key !== "Enter") return
+        event.preventDefault()
+        event.stopPropagation()
+        if (!event.repeat) onDoubleClick()
+      }} title={t("doubleClickConnect")} className="grid w-full grid-cols-[32px_minmax(0,1fr)] items-center gap-2 rounded-lg px-1.5 py-1.5 pr-8 text-left outline-none">
         <span className={cn("grid size-7 place-items-center rounded-md", meta.color, meta.surface)}><Icon className="size-3.5" /></span>
         <span className="min-w-0">
           <span className="block truncate text-xs font-medium text-[var(--foreground)]">{asset.name}</span>
