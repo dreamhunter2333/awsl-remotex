@@ -2,6 +2,15 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.26 - 2026-09-11
+
+- Added revocable login sessions with a 30-day lifetime; restarting the server requires signing in again.
+- Fixed connection cancellation, reconnection, and logout cleanup, including request timeouts.
+- Preserved live sessions when renaming assets and improved deletion error handling.
+- Added keyboard navigation, empty-session guidance, and mobile layout and accessibility improvements.
+- Added per-session audio controls with immediate mute.
+- Tightened Guacamole readiness checks and clarified Docker, PVE, and backup documentation.
+
 ## v0.2.25 - 2026-09-03
 
 - Fixed VNC advanced-setting menus being hidden behind the asset dialog.
