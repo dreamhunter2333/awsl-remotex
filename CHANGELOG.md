@@ -2,6 +2,10 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.27 - 2026-10-12
+
+- Added an iOS/iPadOS standalone-PWA workaround for the system-level top blur, following the selected theme without changing layout or intercepting input.
+
 ## v0.2.26 - 2026-09-11
 
 - Added revocable login sessions with a 30-day lifetime; restarting the server requires signing in again.

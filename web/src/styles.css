@@ -94,6 +94,26 @@ body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
 
+.ios-pwa-status-strip {
+  display: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    :root[data-touch-device="true"] .ios-pwa-status-strip {
+      display: block;
+      position: fixed;
+      inset: 0 0 auto;
+      height: 11px;
+      z-index: 2147483647;
+      pointer-events: none;
+      background-color: var(--panel);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+  }
+}
+
 .touch-session-action {
   display: none;
 }

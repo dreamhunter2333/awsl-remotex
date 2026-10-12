@@ -82,6 +82,7 @@ See [Operations](operations.md) for safe backup and restore procedures.
 - Browser- and operating-system-reserved shortcuts may not be recordable from the physical keyboard. Add those combinations by name or raw keysym and send them from the menu instead.
 - The PWA checks for updates on registration, foreground return, and every 15 minutes; a new worker activates automatically.
 - On iOS/iPadOS, reinstall an existing PWA if manifest or status-bar metadata changes.
+- iOS/iPadOS standalone PWAs use an invisible, theme-colored 11px fixed strip to work around the system-level top blur, based on this [WebKit fixed-edge investigation](https://zenn.dev/uakihir0/articles/260920-ios27-pwa-blur). This relies on WebKit behavior rather than a supported API, so OS updates may change its effectiveness. The strip does not add spacing or intercept input.
 
 - 语言、主题、侧边栏、已打开 Tab、活动时间和自定义快捷键保存在浏览器本地存储中。
 - 软键盘按钮在检测到触屏设备时显示；发送按键菜单在桌面端和触屏端均可用。
@@ -90,3 +91,4 @@ See [Operations](operations.md) for safe backup and restore procedures.
 - 浏览器或操作系统保留的快捷键可能无法从物理键盘录制；可改用按键名称或原始 keysym 添加，再从菜单发送。
 - PWA 会在注册、回到前台以及每 15 分钟检查更新，并自动激活新版本。
 - iOS/iPadOS 的清单或状态栏元数据变化后，应重新安装已有 PWA。
+- iOS/iPadOS 独立 PWA 使用不可见、跟随主题的 11px 顶部固定元素，规避系统顶部模糊；它依赖 WebKit 的实现行为而非正式 API，系统更新可能影响效果，不增加间距或拦截输入。
