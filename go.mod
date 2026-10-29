@@ -3,7 +3,7 @@ module github.com/dreamhunter2333/awsl-remotex
 go 1.26.0
 
 require (
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/go-chi/chi/v5 v5.4.0
 	modernc.org/sqlite v1.57.0
 )
 
