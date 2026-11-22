@@ -2,7 +2,7 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
-## v0.2.28 - 2026-11-23
+## v0.2.29 - 2026-11-23
 
 - Replaced application session cookies with signed Bearer JWTs and one-time WebSocket tickets. Sessions expire after eight hours and close their remote connections on expiry or logout. Sign in again after upgrading.
 - Added OpenID Connect sign-in, including support for Tinyauth.

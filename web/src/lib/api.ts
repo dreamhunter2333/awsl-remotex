@@ -74,7 +74,7 @@ export function expireSession() {
 
 export async function fetchWithSession(path: string, init?: RequestInit) {
   const headers = new Headers(init?.headers)
-  const token = sessionStorage.getItem(sessionKey)
+  const token = globalThis.sessionStorage?.getItem(sessionKey)
   if (token) headers.set("Authorization", `Bearer ${token}`)
   const response = await fetch(path, { ...init, headers, credentials: "omit" })
   if (token && response.status === 401 && response.headers.get("WWW-Authenticate") === "Bearer" &&
@@ -135,7 +135,7 @@ export const api = {
     sessionStorage.removeItem(sessionKey)
   },
   tunnelTicket: async (signal: AbortSignal) => {
-    if (!sessionStorage.getItem(sessionKey)) return undefined
+    if (!globalThis.sessionStorage?.getItem(sessionKey)) return undefined
     return (await request<{ token: string } | undefined>("/api/auth/tunnel", { method: "POST", signal }))?.token
   },
   listAssets: () => request<Asset[]>("/api/assets"),
