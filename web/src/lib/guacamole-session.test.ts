@@ -2,16 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { AudioPlayer, InputStream } from "guacamole-common-js"
 
 import type { GuacamoleSDK } from "./guacamole-sdk"
+import { GuacamoleSession } from "./guacamole-session"
 import {
-  GuacamoleSession,
   authenticateGuacamole,
   buildGuacamoleConnectData,
   classifyGuacamoleFailure,
   readGuacamoleTicket,
-} from "./guacamole-session"
+} from "./guacamole-connection"
 
 class FakeDocument {
   activeElement: FakeElement | null = null
+  readonly listeners = new Map<string, EventListener>()
   readonly documentElement = {}
   readonly querySelector = vi.fn().mockReturnValue(null)
   readonly defaultView: { MutationObserver: typeof MutationObserver }
@@ -32,6 +33,8 @@ class FakeDocument {
   mutate() {
     this.observer?.([], {} as MutationObserver)
   }
+
+  addEventListener(type: string, listener: EventListener) { this.listeners.set(type, listener) }
 }
 
 class FakeElement {
@@ -164,6 +167,7 @@ function createSDK() {
 
 describe("Guacamole direct session", () => {
   beforeEach(() => {
+    vi.stubGlobal("navigator", { platform: "MacIntel" })
     Object.defineProperty(globalThis, "window", {
       configurable: true,
       value: { location: { origin: "https://remotex.example" } },
@@ -404,6 +408,162 @@ describe("Guacamole direct session", () => {
     runtime.keyboards[0].release(0xffe3)
     expect(runtime.clients[0].keyEvents).toEqual([[1, 0xffe3], [1, 0x76], [0, 0x76], [0, 0xffe3]])
     await session.disconnect()
+  })
+
+  it.each([
+    { ctrlKey: true, metaKey: false, shiftKey: false, keys: [0xffe3, 0x76] },
+    { ctrlKey: true, metaKey: false, shiftKey: true, keys: [0xffe3, 0xffe1, 0x76] },
+    { ctrlKey: false, metaKey: true, shiftKey: false, keys: [0xffe7, 0x76] },
+  ])("syncs clipboard before forwarding a paste shortcut: $keys", async ({ keys, ...modifiers }) => {
+    vi.stubGlobal("navigator", { platform: modifiers.ctrlKey ? "MacIntel" : "Win32" })
+    const runtime = createSDK()
+    const input = new FakeElement()
+    let resolveRead!: (text: string) => void
+    const readClipboard = vi.fn(() => new Promise<string>((resolve) => { resolveRead = resolve }))
+    const session = new GuacamoleSession(
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLElement,
+      input as unknown as HTMLTextAreaElement,
+      { isActive: () => true, onActivity: vi.fn(), onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
+      {
+        authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
+        loadSDK: vi.fn().mockResolvedValue(runtime.sdk), readClipboard, revoke: vi.fn().mockResolvedValue(undefined),
+      },
+    )
+    await session.connect("Desktop", "/guacamole/?data=ticket")
+    const client = runtime.clients[0]
+    client.onstatechange?.(3)
+    const event = {
+      ...modifiers, key: "v", altKey: false, repeat: false,
+      preventDefault: vi.fn(), stopImmediatePropagation: vi.fn(),
+    }
+    const keydown = () => input.ownerDocument.listeners.get("keydown")?.(event as unknown as KeyboardEvent)
+    const modifiersHeld = keys.slice(0, -1)
+    for (const key of modifiersHeld) runtime.keyboards[0].press(key)
+    const syncing = session.syncClipboard()
+    keydown()
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(readClipboard).toHaveBeenCalledOnce()
+    expect(client.keyEvents).toEqual(modifiersHeld.map((key) => [1, key]))
+    resolveRead("clipboard-before-paste")
+    await syncing
+    await Promise.resolve()
+    expect(runtime.writers.at(-1)).toMatchObject({ text: "clipboard-before-paste", ended: true })
+    expect(client.keyEvents).toEqual([
+      ...modifiersHeld.map((key) => [1, key]), [1, 0x76], [0, 0x76],
+    ])
+    runtime.keyboards[0].press(0x61)
+    runtime.keyboards[0].release(0x61)
+    expect(client.keyEvents.slice(-4)).toEqual([[1, 0x76], [0, 0x76], [1, 0x61], [0, 0x61]])
+    for (const key of modifiersHeld) runtime.keyboards[0].release(key)
+
+    const previousEvents = client.keyEvents.length
+    for (const localInput of [false, true]) {
+      keydown()
+      const pendingPaste = session.syncClipboard()
+      input.ownerDocument.querySelector.mockReturnValue(localInput ? null : { open: true })
+      input.localKeyboard = localInput
+      input.ownerDocument.mutate()
+      resolveRead("clipboard while focus is local")
+      await pendingPaste
+      await Promise.resolve()
+      expect(client.keyEvents).toHaveLength(previousEvents)
+      input.ownerDocument.querySelector.mockReturnValue(null)
+      input.localKeyboard = false
+      input.ownerDocument.mutate()
+    }
+
+    keydown()
+    await session.disconnect()
+    resolveRead("stale clipboard")
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(client.keyEvents).toHaveLength(previousEvents)
+    expect(runtime.writers).toHaveLength(2)
+  })
+
+  it.each(["MacIntel", "Win32"])("routes native text paste without reading permission and keeps modal input local: %s", async (platform) => {
+    vi.stubGlobal("navigator", { platform })
+    const runtime = createSDK()
+    const input = new FakeElement()
+    let active = true
+    const readClipboard = vi.fn()
+    const session = new GuacamoleSession(
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLElement,
+      input as unknown as HTMLTextAreaElement,
+      { isActive: () => active, onActivity: vi.fn(), onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
+      {
+        authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
+        loadSDK: vi.fn().mockResolvedValue(runtime.sdk), readClipboard, revoke: vi.fn().mockResolvedValue(undefined),
+      },
+    )
+    await session.connect("Desktop", "/guacamole/?data=ticket")
+    runtime.clients[0].onstatechange?.(3)
+    const event = { clipboardData: { types: ["text/plain"], getData: () => "native paste" }, preventDefault: vi.fn() }
+    const paste = () => input.ownerDocument.listeners.get("paste")?.(event as unknown as ClipboardEvent)
+    input.ownerDocument.querySelector.mockReturnValue({ open: true })
+    paste()
+    input.ownerDocument.querySelector.mockReturnValue(null)
+    active = false
+    paste()
+    active = true
+    input.localKeyboard = true
+    paste()
+    expect(runtime.writers).toHaveLength(0)
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    input.localKeyboard = false
+    const shortcut = {
+      ctrlKey: platform === "Win32", metaKey: platform === "MacIntel", shiftKey: false,
+      key: "v", altKey: false, repeat: false, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn(),
+    }
+    input.ownerDocument.listeners.get("keydown")?.(shortcut as unknown as KeyboardEvent)
+    expect(shortcut.preventDefault).not.toHaveBeenCalled()
+    paste()
+    expect(runtime.writers.at(-1)).toMatchObject({ text: "native paste", ended: true })
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(readClipboard).not.toHaveBeenCalled()
+    const modifier = platform === "Win32" ? 0xffe3 : 0xffe7
+    expect(runtime.clients[0].keyEvents).toEqual([[1, modifier], [1, 0x76], [0, 0x76], [0, modifier]])
+    await session.disconnect()
+  })
+
+  it("isolates clipboard operations across reconnections", async () => {
+    const runtime = createSDK()
+    const input = new FakeElement()
+    let finishOldRead!: (text: string) => void
+    const readClipboard = vi.fn()
+      .mockReturnValueOnce(new Promise<string>((resolve) => { finishOldRead = resolve }))
+      .mockResolvedValueOnce("current clipboard")
+    const writeClipboard = vi.fn().mockResolvedValue(undefined)
+    const session = new GuacamoleSession(
+      new FakeElement() as unknown as HTMLElement,
+      new FakeElement() as unknown as HTMLElement,
+      input as unknown as HTMLTextAreaElement,
+      { isActive: () => true, onActivity: vi.fn(), onDisplayResize: vi.fn(), onEnded: vi.fn(), onReady: vi.fn() },
+      {
+        authenticate: vi.fn().mockResolvedValue({ authToken: "token", dataSource: "json" }),
+        loadSDK: vi.fn().mockResolvedValue(runtime.sdk), readClipboard, writeClipboard, revoke: vi.fn().mockResolvedValue(undefined),
+      },
+    )
+    await session.connect("Desktop", "/guacamole/?data=old")
+    const first = runtime.clients[0]
+    first.onstatechange?.(3)
+    first.onclipboard?.({}, "text/plain")
+    const staleRead = session.syncClipboard()
+
+    await session.connect("Desktop", "/guacamole/?data=new")
+    runtime.clients[1].onstatechange?.(3)
+    await session.syncClipboard()
+    runtime.readers[0].ontext?.("old remote clipboard")
+    runtime.readers[0].onend?.()
+    finishOldRead("old local clipboard")
+    await staleRead
+
+    expect(runtime.writers.map(({ text }) => text)).toEqual(["current clipboard"])
+    expect(writeClipboard).not.toHaveBeenCalled()
+    await session.dispose()
   })
 
   it("reports a protocol error once and differentiates the cause", async () => {

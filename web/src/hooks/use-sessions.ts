@@ -6,6 +6,11 @@ import { clearSessions, loadSessions, saveSessions } from "@/lib/sessions"
 
 const READY_TIMEOUT_MS = 15_000
 
+interface ConnectionAttempt {
+  controller: AbortController
+  releaseQueue?: () => void
+}
+
 export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: number, connectionFailed: string, sessionEnded: string) {
   const [sessions, setSessions] = useState<string[]>([])
   const [activeSession, setActiveSessionState] = useState<string>()
@@ -22,9 +27,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   const activityRef = useRef<Record<string, number>>({})
   const handlesRef = useRef(new Map<string, SessionHandle>())
   const audioEnabledRef = useRef(new Set<string>())
-  const connectingRef = useRef(new Set<string>())
-  const requestsRef = useRef(new Map<string, AbortController>())
-  const readyResolversRef = useRef(new Map<string, () => void>())
+  const attemptsRef = useRef(new Map<string, ConnectionAttempt>())
   const queueRef = useRef(Promise.resolve())
   const restoredRef = useRef(false)
 
@@ -49,23 +52,27 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     setActiveSessionState(id)
   }, [markActivity])
 
-  const setConnecting = useCallback((id: string, value: boolean) => {
-    if (value) connectingRef.current.add(id)
-    else connectingRef.current.delete(id)
-    setConnectingIDs(new Set(connectingRef.current))
-  }, [])
-
-  const resolveReady = useCallback((id: string) => {
-    readyResolversRef.current.get(id)?.()
-    readyResolversRef.current.delete(id)
+  const updateConnecting = useCallback(() => {
+    setConnectingIDs(new Set(attemptsRef.current.keys()))
   }, [])
 
   const cancelConnection = useCallback((id: string) => {
-    requestsRef.current.get(id)?.abort()
-    requestsRef.current.delete(id)
-    resolveReady(id)
-    setConnecting(id, false)
-  }, [resolveReady, setConnecting])
+    const attempt = attemptsRef.current.get(id)
+    if (!attempt) return
+    attemptsRef.current.delete(id)
+    attempt.controller.abort()
+    attempt.releaseQueue?.()
+    updateConnecting()
+  }, [updateConnecting])
+
+  const cancelAllConnections = useCallback(() => {
+    for (const attempt of attemptsRef.current.values()) {
+      attempt.controller.abort()
+      attempt.releaseQueue?.()
+    }
+    attemptsRef.current.clear()
+    queueRef.current = Promise.resolve()
+  }, [])
 
   const setConnected = useCallback((id: string, value: boolean) => {
     setConnectedIDs((current) => {
@@ -97,40 +104,43 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   }, [setAudioEnabled])
 
   const connect = useCallback((asset: Asset) => {
-    if (connectingRef.current.has(asset.id)) return
+    if (attemptsRef.current.has(asset.id)) return
+    const attempt: ConnectionAttempt = { controller: new AbortController() }
+    const { signal } = attempt.controller
+    attemptsRef.current.set(asset.id, attempt)
     setConnected(asset.id, false)
-    setConnecting(asset.id, true)
-    const request = new AbortController()
-    requestsRef.current.set(asset.id, request)
+    updateConnecting()
     queueRef.current = queueRef.current.then(async () => {
-      if (request.signal.aborted) return
+      if (signal.aborted) return
       setConnectionErrors((current) => ({ ...current, [asset.id]: "" }))
       try {
         const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark"
-        const ticket = await api.connectAsset(asset.id, theme, request.signal)
-        if (request.signal.aborted) return
-        updateURLs((current) => ({ ...current, [asset.id]: ticket.url }))
+        const ticket = await api.connectAsset(asset.id, theme, signal)
+        if (signal.aborted) return
         await new Promise<void>((resolve) => {
-          const timeout = window.setTimeout(() => resolveReady(asset.id), READY_TIMEOUT_MS)
-          readyResolversRef.current.set(asset.id, () => {
+          const releaseQueue = () => {
             window.clearTimeout(timeout)
+            attempt.releaseQueue = undefined
             resolve()
-          })
+          }
+          const timeout = window.setTimeout(releaseQueue, READY_TIMEOUT_MS)
+          attempt.releaseQueue = releaseQueue
+          updateURLs((current) => ({ ...current, [asset.id]: ticket.url }))
         })
       } catch (reason) {
-        if (request.signal.aborted) return
+        if (signal.aborted) return
         setConnectionErrors((current) => ({
           ...current,
           [asset.id]: reason instanceof Error ? reason.message : connectionFailed,
         }))
       } finally {
-        if (requestsRef.current.get(asset.id) === request) {
-          requestsRef.current.delete(asset.id)
-          setConnecting(asset.id, false)
+        if (attemptsRef.current.get(asset.id) === attempt) {
+          attemptsRef.current.delete(asset.id)
+          updateConnecting()
         }
       }
     })
-  }, [connectionFailed, resolveReady, setConnected, setConnecting, updateURLs])
+  }, [connectionFailed, setConnected, updateConnecting, updateURLs])
 
   const close = useCallback((id: string) => {
     cancelConnection(id)
@@ -185,8 +195,8 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   const readySession = useCallback((id: string) => {
     if (!sessionsRef.current.includes(id)) return
     setConnected(id, true)
-    resolveReady(id)
-  }, [resolveReady, setConnected])
+    attemptsRef.current.get(id)?.releaseQueue?.()
+  }, [setConnected])
 
   const registerHandle = useCallback((id: string, handle: SessionHandle | null) => {
     if (handle) handlesRef.current.set(id, handle)
@@ -214,12 +224,8 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   }, [])
 
   const reset = useCallback(() => {
-    for (const request of requestsRef.current.values()) request.abort()
-    requestsRef.current.clear()
-    for (const id of readyResolversRef.current.keys()) resolveReady(id)
-    queueRef.current = Promise.resolve()
-    connectingRef.current.clear()
-    setConnectingIDs(new Set())
+    cancelAllConnections()
+    updateConnecting()
     updateSessions([])
     const disconnections = [...handlesRef.current.values()].map((handle) => handle.disconnect())
     handlesRef.current.clear()
@@ -235,29 +241,26 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     setIdleClosed("")
     clearSessions()
     return Promise.allSettled(disconnections)
-  }, [resolveReady, updateSessions, updateURLs])
+  }, [cancelAllConnections, updateConnecting, updateSessions, updateURLs])
 
   useEffect(() => () => {
-    for (const request of requestsRef.current.values()) request.abort()
-    requestsRef.current.clear()
-    for (const id of readyResolversRef.current.keys()) resolveReady(id)
-    connectingRef.current.clear()
-    queueRef.current = Promise.resolve()
+    cancelAllConnections()
     restoredRef.current = false
-  }, [resolveReady])
+  }, [cancelAllConnections])
 
   useEffect(() => {
     if (!ready || restoredRef.current) return
     restoredRef.current = true
     const stored = loadSessions()
     const now = Date.now()
-    const valid = stored.ids.filter((id) => assets.some((asset) => asset.id === id) && now - (stored.activity[id] ?? now) < idleTimeoutMs)
+    const assetsByID = new Map(assets.map((asset) => [asset.id, asset]))
+    const valid = stored.ids.filter((id) => assetsByID.has(id) && now - (stored.activity[id] ?? now) < idleTimeoutMs)
     activityRef.current = Object.fromEntries(valid.map((id) => [id, stored.activity[id] ?? now]))
     updateSessions(valid)
     activeRef.current = valid.includes(stored.active ?? "") ? stored.active : valid[0]
     setActiveSessionState(activeRef.current)
     for (const id of valid) {
-      const asset = assets.find((item) => item.id === id)
+      const asset = assetsByID.get(id)
       if (asset) connect(asset)
     }
   }, [assets, connect, idleTimeoutMs, ready, updateSessions])

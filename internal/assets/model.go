@@ -63,11 +63,12 @@ func (input *Input) Normalize() error {
 	if input.Group == "" {
 		input.Group = "__default__"
 	}
-	if input.Protocol != "ssh" && input.Protocol != "rdp" && input.Protocol != "vnc" {
+	defaultPort := DefaultPort(input.Protocol)
+	if defaultPort == 0 {
 		return errors.New("protocol must be ssh, rdp, or vnc")
 	}
 	if input.Port == 0 {
-		input.Port = DefaultPort(input.Protocol)
+		input.Port = defaultPort
 	}
 	if input.Port < 1 || input.Port > 65535 {
 		return errors.New("port must be between 1 and 65535")
@@ -89,30 +90,33 @@ func (input *Input) Normalize() error {
 		return nil
 	}
 
-	input.Settings.VNC.Encodings = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Encodings))
-	input.Settings.VNC.Cursor = strings.ToLower(strings.TrimSpace(input.Settings.VNC.Cursor))
-	input.Settings.VNC.WheelDirection = strings.ToLower(strings.TrimSpace(input.Settings.VNC.WheelDirection))
-	input.Settings.VNC.ClipboardEncoding = strings.ToUpper(strings.TrimSpace(input.Settings.VNC.ClipboardEncoding))
-	if input.Settings.VNC.Encodings != "" && input.Settings.VNC.Encodings != "tight" {
+	settings := *input.Settings.VNC
+	settings.Encodings = strings.ToLower(strings.TrimSpace(settings.Encodings))
+	settings.Cursor = strings.ToLower(strings.TrimSpace(settings.Cursor))
+	settings.WheelDirection = strings.ToLower(strings.TrimSpace(settings.WheelDirection))
+	settings.ClipboardEncoding = strings.ToUpper(strings.TrimSpace(settings.ClipboardEncoding))
+	if settings.Encodings != "" && settings.Encodings != "tight" {
 		return errors.New("VNC encodings must be tight")
 	}
-	switch input.Settings.VNC.ColorDepth {
+	switch settings.ColorDepth {
 	case 0, 8, 16, 24, 32:
 	default:
 		return errors.New("VNC colorDepth must be 8, 16, 24, or 32")
 	}
-	if input.Settings.VNC.Cursor != "" && input.Settings.VNC.Cursor != "remote" {
+	if settings.Cursor != "" && settings.Cursor != "remote" {
 		return errors.New("VNC cursor must be remote")
 	}
-	if input.Settings.VNC.WheelDirection != "" && input.Settings.VNC.WheelDirection != "reverse" {
+	if settings.WheelDirection != "" && settings.WheelDirection != "reverse" {
 		return errors.New("VNC wheelDirection must be reverse")
 	}
-	if input.Settings.VNC.ClipboardEncoding != "" && input.Settings.VNC.ClipboardEncoding != "UTF-8" {
+	if settings.ClipboardEncoding != "" && settings.ClipboardEncoding != "UTF-8" {
 		return errors.New("VNC clipboardEncoding must be UTF-8")
 	}
-	if input.Settings.VNC.Encodings == "" && input.Settings.VNC.ColorDepth == 0 && input.Settings.VNC.Cursor == "" && input.Settings.VNC.WheelDirection == "" && input.Settings.VNC.ClipboardEncoding == "" {
+	if settings == (VNCSettings{}) {
 		input.Settings.VNC = nil
+		return nil
 	}
+	input.Settings.VNC = &settings
 	return nil
 }
 

@@ -1,4 +1,5 @@
 import { guacamoleKeys } from "./guacamole-keys"
+import { readLocalStorage, writeLocalStorage } from "./local-storage"
 
 const STORAGE_KEY = "awsl-remotex.shortcuts"
 export const MAX_CUSTOM_SHORTCUTS = 12
@@ -81,7 +82,7 @@ export function parseShortcut(value: string): Shortcut | undefined {
 
 export function loadCustomShortcuts() {
   try {
-    const values = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]") as unknown
+    const values = JSON.parse(readLocalStorage(STORAGE_KEY) || "[]") as unknown
     if (!Array.isArray(values)) return []
     return uniqueShortcuts(values.map(readStoredShortcut).filter((value): value is Shortcut => Boolean(value)))
       .slice(0, MAX_CUSTOM_SHORTCUTS)
@@ -91,11 +92,7 @@ export function loadCustomShortcuts() {
 }
 
 export function saveCustomShortcuts(shortcuts: Shortcut[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts))
-  } catch {
-    return
-  }
+  writeLocalStorage(STORAGE_KEY, JSON.stringify(shortcuts))
 }
 
 function parseKey(token: string) {

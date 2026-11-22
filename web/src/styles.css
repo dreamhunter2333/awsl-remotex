@@ -8,6 +8,7 @@
 }
 
 :root {
+  color-scheme: light dark;
   font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,9 +16,11 @@
   text-size-adjust: 100%;
 }
 
-:root,
 :root[data-theme="dark"] {
   color-scheme: dark;
+}
+
+:root {
   --background: #282c34;
   --panel: #21252b;
   --surface: #2c313a;

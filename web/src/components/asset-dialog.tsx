@@ -20,6 +20,7 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   const titleID = useId()
   const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const testRequest = useRef<AbortController>(null)
   const [protocol, setProtocol] = useState<Protocol>(asset?.protocol ?? "ssh")
   const [credentialType, setCredentialType] = useState<CredentialType>(asset?.credentialType ?? "prompt")
   const [customVNCSettings, setCustomVNCSettings] = useState(Boolean(asset?.settings?.vnc))
@@ -33,7 +34,16 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   useEffect(() => {
     if (!dialog) return
     if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
+    if (!open) {
+      if (dialog.open) dialog.close()
+      setTesting(false)
+      setTestResult(undefined)
+    }
+    return () => {
+      const request = testRequest.current
+      testRequest.current = null
+      request?.abort()
+    }
   }, [dialog, open])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -73,19 +83,36 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
 
   const testConnection = async () => {
     const form = formRef.current
-    if (!form?.reportValidity()) return
+    if (testRequest.current || !form?.reportValidity()) return
+    const request = new AbortController()
+    testRequest.current = request
     setTesting(true)
     setTestResult(undefined)
     try {
-      setTestResult(await api.testAsset(readInput(form, protocol, credentialType, customVNCSettings), asset?.id))
+      const result = await api.testAsset(readInput(form, protocol, credentialType, customVNCSettings), asset?.id, request.signal)
+      if (!request.signal.aborted) setTestResult(result)
     } catch (reason) {
-      setTestResult({ reachable: false, latencyMs: 0, message: reason instanceof Error ? reason.message : t("connectionFailed") })
+      if (!request.signal.aborted) {
+        setTestResult({ reachable: false, latencyMs: 0, message: reason instanceof Error ? reason.message : t("connectionFailed") })
+      }
     } finally {
-      setTesting(false)
+      if (testRequest.current === request) {
+        testRequest.current = null
+        setTesting(false)
+      }
     }
   }
 
+  const clearTest = () => {
+    testRequest.current?.abort()
+    testRequest.current = null
+    setTesting(false)
+    setTestResult(undefined)
+  }
+
   const changeProtocol = (next: Protocol) => {
+    if (protocol === next) return
+    clearTest()
     setProtocol(next)
     if (next !== "ssh" && credentialType === "private-key") setCredentialType("prompt")
   }
@@ -97,10 +124,13 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
   const hasMatchingCredential = Boolean(
     asset?.credentialConfigured && asset.protocol === protocol && asset.credentialType === credentialType,
   )
+  const testMessage = testResult?.reachable
+    ? t(testResult.loginUnverified ? "rdpReachable" : "connectionReachable", { latency: testResult.latencyMs })
+    : testResult && t("connectionUnreachable", { message: testResult.message })
 
   return (
     <dialog ref={setDialog} onClose={onClose} aria-labelledby={titleID} className="m-auto w-[min(460px,calc(100%-2rem))] rounded-2xl border border-[var(--border-strong)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[0_24px_80px_var(--shadow)] backdrop:bg-[var(--backdrop)]">
-      <form ref={formRef} onSubmit={handleSubmit} className="p-5">
+      <form ref={formRef} onSubmit={handleSubmit} onChange={clearTest} className="p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <h2 id={titleID} className="text-base font-semibold">{asset ? t("editAsset") : t("addRemoteAsset")}</h2>
           <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label={t("close")}><X className="size-4" /></Button>
@@ -127,7 +157,11 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
             <legend className="mb-1.5 text-xs text-[var(--muted)]">{t("authentication")}</legend>
             <div className={cn("grid gap-1.5", protocol === "ssh" ? "grid-cols-3" : "grid-cols-2")}>
               {credentialTypes.map((item) => (
-                <button key={item} type="button" onClick={() => setCredentialType(item)} className={cn("h-8 rounded-md border px-2 text-[11px] font-medium transition", credentialType === item ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-hover)]")}>
+                <button key={item} type="button" onClick={() => {
+                  if (item === credentialType) return
+                  clearTest()
+                  setCredentialType(item)
+                }} className={cn("h-8 rounded-md border px-2 text-[11px] font-medium transition", credentialType === item ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted)] hover:bg-[var(--surface-hover)]")}>
                   {item === "prompt" ? t("noSavedCredential") : item === "password" ? t("passwordCredential") : t("privateKeyCredential")}
                 </button>
               ))}
@@ -216,8 +250,8 @@ export function AssetDialog({ asset, open, onClose, onSubmit, onDelete }: {
             </details>
           )}
           {error && <p role="alert" className="text-xs text-[var(--danger)]">{error}</p>}
-          {testResult && <p role="status" className={cn("text-xs", testResult.reachable ? "text-[var(--green)]" : "text-[var(--danger)]")}>{testResult.reachable ? t("connectionReachable", { latency: testResult.latencyMs }) : t("connectionUnreachable", { message: testResult.message })}</p>}
         </div>
+        <p role="status" className={cn("text-xs not-empty:mt-3.5", testResult?.loginUnverified ? "text-[var(--muted)]" : testResult?.reachable ? "text-[var(--green)]" : "text-[var(--danger)]")}>{testMessage}</p>
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={testing} onClick={testConnection}><Activity className="size-3.5" />{testing ? t("testingConnection") : t("testConnection")}</Button>
           {asset && (

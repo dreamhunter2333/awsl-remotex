@@ -51,6 +51,8 @@ func (tester *Tester) Test(ctx context.Context, asset assets.Asset, value creden
 		return fmt.Errorf("connect guacd: %w", err)
 	}
 	defer connection.Close()
+	stop := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stop()
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = connection.SetDeadline(deadline)
 	} else {
@@ -98,6 +100,9 @@ func (tester *Tester) Test(ctx context.Context, asset assets.Asset, value creden
 	for {
 		opcode, args, err = readInstruction(reader)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			var networkError net.Error
 			if stable && errors.As(err, &networkError) && networkError.Timeout() {
 				_ = writeInstruction(connection, "disconnect")

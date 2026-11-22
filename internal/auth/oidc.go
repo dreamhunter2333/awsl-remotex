@@ -50,10 +50,7 @@ func NewOIDC(ctx context.Context, config OIDCConfig) (*OIDC, error) {
 	if config.ClientID == "" || config.ClientSecret == "" {
 		return nil, errors.New("OIDC_CLIENT_ID and OIDC_CLIENT_SECRET are required")
 	}
-	httpClient, _ := ctx.Value(oauth2.HTTPClient).(*http.Client)
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
-	}
+	httpClient := oidcHTTPClient(ctx)
 	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, httpClient), config.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("discover OIDC provider: %w", err)
@@ -82,6 +79,27 @@ func NewOIDC(ctx context.Context, config OIDCConfig) (*OIDC, error) {
 		verifier: provider.Verifier(&oidc.Config{ClientID: config.ClientID}),
 		http:     httpClient,
 	}, nil
+}
+
+func oidcHTTPClient(ctx context.Context) *http.Client {
+	client := http.Client{Timeout: 10 * time.Second}
+	if supplied, _ := ctx.Value(oauth2.HTTPClient).(*http.Client); supplied != nil {
+		client = *supplied
+	}
+	checkRedirect := client.CheckRedirect
+	client.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		if request.URL.Scheme != "https" {
+			return errors.New("OIDC redirects must use HTTPS")
+		}
+		if checkRedirect != nil {
+			return checkRedirect(request, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("too many OIDC redirects")
+		}
+		return nil
+	}
+	return &client
 }
 
 func (client *OIDC) Start() Authorization {

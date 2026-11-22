@@ -2,5 +2,6 @@
 .env
 data
 web/node_modules
+tests/e2e/artifacts
 *.db
 *.log

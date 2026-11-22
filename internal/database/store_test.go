@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +11,51 @@ import (
 	"github.com/dreamhunter2333/awsl-remotex/internal/assets"
 	"github.com/dreamhunter2333/awsl-remotex/internal/credential"
 )
+
+func TestConnectionReadsAssetAndCredentialFromTheSameVersion(t *testing.T) {
+	vault, err := credential.New(strings.Repeat("3", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "test.db"), vault)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	input := assets.Input{Name: "initial", Protocol: "ssh", Host: "localhost", CredentialType: "password", Password: "initial"}
+	asset, err := store.CreateAsset(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := make(chan error, 1)
+	go func() {
+		for i := range 40 {
+			input.Name = fmt.Sprintf("version-%d", i)
+			input.Password = input.Name
+			if _, err := store.UpdateAsset(t.Context(), asset.ID, input); err != nil {
+				updated <- err
+				return
+			}
+		}
+		updated <- nil
+	}()
+
+	for range 40 {
+		current, value, err := store.GetAssetWithCredential(t.Context(), asset.ID)
+		if err != nil {
+			t.Error(err)
+			break
+		}
+		if current.Name != value.Password {
+			t.Error("asset and credential came from different updates")
+			break
+		}
+	}
+	if err := <-updated; err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestUpdatePrivateKeyPassphrase(t *testing.T) {
 	vault, err := credential.New(strings.Repeat("1", 64))
@@ -36,7 +82,7 @@ func TestUpdatePrivateKeyPassphrase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := store.GetCredential(context.Background(), created.ID)
+	_, value, err := store.GetAssetWithCredential(context.Background(), created.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +137,7 @@ func TestVNCSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected VNC settings: %#v", created.Settings.VNC)
 	}
 
-	stored, err := store.GetAsset(context.Background(), created.ID)
+	stored, _, err := store.GetAssetWithCredential(context.Background(), created.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

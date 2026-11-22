@@ -77,6 +77,7 @@ func TestJWTProtectsAssetsAndGuacamole(t *testing.T) {
 	}
 	expectStatus(request("GET", "/api/assets", "", "", false), http.StatusUnauthorized)
 	expectStatus(request("POST", "/guacamole/api/tokens", "", "", false), http.StatusUnauthorized)
+	expectStatus(request("POST", "/api/auth/login", "", `{"username":"operator","password":"secret"}{}`, false), http.StatusBadRequest)
 	const tunnel = "/guacamole/websocket-tunnel?token=guac-token"
 	expectStatus(request("GET", tunnel, "", "", true), http.StatusUnauthorized)
 
@@ -121,7 +122,11 @@ func TestReadyRequiresSuccessfulGuacamoleResponse(t *testing.T) {
 				writer.WriteHeader(status)
 			}))
 			defer upstream.Close()
-			server := &Server{store: store, guacd: guacamole.NewTester(listener.Addr().String(), time.Second), guacamoleUpstream: upstream.URL}
+			upstreamURL, err := parseGuacamoleUpstream(upstream.URL + "/")
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := &Server{store: store, guacd: guacamole.NewTester(listener.Addr().String(), time.Second), guacamoleUpstream: upstreamURL}
 			response := httptest.NewRecorder()
 			server.ready(response, httptest.NewRequest("GET", "/api/ready", nil))
 			want := http.StatusServiceUnavailable

@@ -56,16 +56,17 @@ func main() {
 	}
 	defer store.Close()
 
-	var guacamoleAuth *guacamole.Authenticator
+	var connector assets.Connector
 	if secret := settings.GuacamoleJSONSecret; secret != "" {
-		guacamoleAuth, err = guacamole.New(secret, settings.GuacamolePublicPath)
+		authenticator, err := guacamole.New(secret, settings.GuacamolePublicPath)
 		if err != nil {
 			logger.Error("configure guacamole", "error", err)
 			os.Exit(1)
 		}
+		connector = authenticator
 	}
 	guacdTester := guacamole.NewTester(settings.GuacdAddress, 5*time.Second)
-	assetService := assets.NewService(store, guacamoleAuth, guacdTester)
+	assetService := assets.NewService(store, connector, guacdTester)
 	handler, err := httpapi.New(store, logger, httpapi.Config{
 		WebDir:             settings.WebDirectory,
 		GuacamoleUpstream:  settings.GuacamoleUpstream,

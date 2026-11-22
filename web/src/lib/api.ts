@@ -57,6 +57,7 @@ export interface AuthStatus {
 
 export interface ConnectionTest {
   reachable: boolean
+  loginUnverified?: boolean
   latencyMs: number
   message: string
 }
@@ -128,7 +129,7 @@ export function completeOIDC() {
 }
 
 export const api = {
-  authStatus: () => request<AuthStatus>("/api/auth/status"),
+  authStatus: (signal?: AbortSignal) => request<AuthStatus>("/api/auth/status", { signal }),
   login: (username: string, password: string) => signIn("/api/auth/login", { username, password }),
   logout: async () => {
     await request<void>("/api/auth/session", { method: "DELETE", signal: AbortSignal.timeout(10_000) })
@@ -138,14 +139,14 @@ export const api = {
     if (!globalThis.sessionStorage?.getItem(sessionKey)) return undefined
     return (await request<{ token: string } | undefined>("/api/auth/tunnel", { method: "POST", signal }))?.token
   },
-  listAssets: () => request<Asset[]>("/api/assets"),
+  listAssets: (signal?: AbortSignal) => request<Asset[]>("/api/assets", { signal }),
   createAsset: (input: AssetInput) =>
     request<Asset>("/api/assets", { method: "POST", body: JSON.stringify(input) }),
   updateAsset: (id: string, input: AssetInput) =>
     request<Asset>(`/api/assets/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   connectAsset: (id: string, theme: "dark" | "light", signal?: AbortSignal) =>
     request<ConnectionTicket>(`/api/assets/${id}/connect?theme=${theme}`, { method: "POST", signal }),
-  testAsset: (asset: AssetInput, assetId?: string) =>
-    request<ConnectionTest>("/api/assets/test", { method: "POST", body: JSON.stringify({ assetId, asset }) }),
+  testAsset: (asset: AssetInput, assetId?: string, signal?: AbortSignal) =>
+    request<ConnectionTest>("/api/assets/test", { method: "POST", body: JSON.stringify({ assetId, asset }), signal }),
   deleteAsset: (id: string) => request<void>(`/api/assets/${id}`, { method: "DELETE" }),
 }

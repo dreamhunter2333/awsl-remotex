@@ -68,7 +68,7 @@ func (server *Server) connectAsset(writer http.ResponseWriter, request *http.Req
 }
 
 func (server *Server) testAsset(writer http.ResponseWriter, request *http.Request) {
-	server.runConnectionTest(writer, request, func(ctx context.Context) error {
+	server.runConnectionTest(writer, request, func(ctx context.Context) (bool, error) {
 		return server.assets.TestSaved(ctx, chi.URLParam(request, "id"))
 	})
 }
@@ -82,16 +82,16 @@ func (server *Server) testAssetInput(writer http.ResponseWriter, request *http.R
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	server.runConnectionTest(writer, request, func(ctx context.Context) error {
+	server.runConnectionTest(writer, request, func(ctx context.Context) (bool, error) {
 		return server.assets.TestInput(ctx, input.AssetID, input.Asset)
 	})
 }
 
-func (server *Server) runConnectionTest(writer http.ResponseWriter, request *http.Request, test func(context.Context) error) {
+func (server *Server) runConnectionTest(writer http.ResponseWriter, request *http.Request, test func(context.Context) (bool, error)) {
 	ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
 	defer cancel()
 	started := time.Now()
-	err := test(ctx)
+	loginUnverified, err := test(ctx)
 	latency := time.Since(started).Milliseconds()
 	if errors.Is(err, assets.ErrNotFound) {
 		writeError(writer, http.StatusNotFound, err.Error())
@@ -101,7 +101,12 @@ func (server *Server) runConnectionTest(writer http.ResponseWriter, request *htt
 		writeJSON(writer, http.StatusOK, map[string]any{"reachable": false, "latencyMs": latency, "message": err.Error()})
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"reachable": true, "latencyMs": latency, "message": "Guacamole connection succeeded"})
+	result := map[string]any{"reachable": true, "latencyMs": latency, "message": "Guacamole connection succeeded"}
+	if loginUnverified {
+		result["loginUnverified"] = true
+		result["message"] = "RDP server reachable. Open a session to verify sign-in."
+	}
+	writeJSON(writer, http.StatusOK, result)
 }
 
 func (server *Server) writeAssetError(writer http.ResponseWriter, request *http.Request, err error) bool {

@@ -3,13 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem("awsl-remotex.theme");
+          if (theme !== "light" && theme !== "dark") return;
+          document.documentElement.dataset.theme = theme;
+          document.querySelector('meta[name="color-scheme"]').content = theme;
+        } catch {}
+      })();
+    </script>
     <meta name="theme-color" content="#282c34" />
     <meta name="description" content="A lightweight browser-based remote workspace for SSH, RDP, and VNC." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <style>
-      html, body, #root { min-height: 100%; margin: 0; background: #282c34; }
+      html, body, #root { min-height: 100%; margin: 0; background: #282c34; background: light-dark(#fafafa, #282c34); }
     </style>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>Awsl RemoteX</title>

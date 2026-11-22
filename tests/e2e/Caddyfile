@@ -1,0 +1,18 @@
+{
+	skip_install_trust
+}
+
+app.remotex.test {
+	tls internal
+	reverse_proxy app:8080
+}
+
+oidc.remotex.test {
+	tls internal
+	reverse_proxy oidc-app:8080
+}
+
+auth.remotex.test {
+	tls internal
+	reverse_proxy tinyauth:3000
+}

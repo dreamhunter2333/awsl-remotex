@@ -1,119 +1,18 @@
-import type { Client, Event as GuacamoleEvent, Mouse, Status } from "guacamole-common-js"
+import type { Client, Event as GuacamoleEvent, Mouse } from "guacamole-common-js"
 
-import { api, fetchWithSession } from "./api"
-import { sendKeyCombination, type KeyEventSender } from "./guacamole-keys"
+import { api } from "./api"
 import { GuacamoleAudioPlayer } from "./guacamole-audio"
-import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacamole-sdk"
+import {
+  authenticateGuacamole, buildGuacamoleConnectData, classifyGuacamoleFailure, GuacamoleSessionError,
+  readGuacamoleTicket, revokeGuacamoleSession, type GuacamoleAuthResponse, type GuacamoleFailure,
+} from "./guacamole-connection"
+import { registerDocumentKeyboard, type DocumentKeyboardRegistration } from "./guacamole-keyboard"
+import { guacamoleKeys, sendKeyCombination } from "./guacamole-keys"
+import { loadGuacamoleSDK, type GuacamoleSDK } from "./guacamole-sdk"
 
 const CAPS_LOCK_HOLD_MS = 150
-const CAPS_LOCK_KEYSYM = 0xffe5
 
-export interface GuacamoleAuthResponse {
-  authToken: string
-  dataSource: string
-}
-
-export type GuacamoleFailure = "sdk" | "authentication" | "forbidden" | "dns" | "certificate" | "security" | "timeout" | "busy" | "conflict" | "upstream" | "disconnected"
 export type ClipboardDirection = "local-to-remote" | "remote-to-local"
-
-export class GuacamoleSessionError extends Error {
-  constructor(readonly failure: GuacamoleFailure, message: string) {
-    super(message)
-  }
-}
-
-export function readGuacamoleTicket(connectionURL: string) {
-  return new URL(connectionURL, window.location.origin).searchParams.get("data") ?? ""
-}
-
-export async function authenticateGuacamole(ticket: string, signal: AbortSignal): Promise<GuacamoleAuthResponse> {
-  const response = await fetchWithSession("/guacamole/api/tokens", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ data: ticket }),
-    signal,
-  })
-  if (!response.ok) {
-    const failure = response.status === 401 ? "authentication"
-      : response.status === 403 ? "forbidden"
-        : response.status === 408 ? "timeout"
-          : response.status === 409 ? "conflict"
-            : response.status === 429 ? "busy"
-              : response.status >= 500 ? "upstream" : "authentication"
-    throw new GuacamoleSessionError(failure, `Guacamole authentication failed (${response.status})`)
-  }
-  const result = await response.json() as Partial<GuacamoleAuthResponse>
-  if (!result.authToken || !result.dataSource) throw new GuacamoleSessionError("upstream", "Guacamole returned an invalid authentication response")
-  return { authToken: result.authToken, dataSource: result.dataSource }
-}
-
-export function buildGuacamoleConnectData(options: {
-  connectionID: string
-  authToken: string
-  dataSource: string
-  tunnelTicket?: string
-  width: number
-  height: number
-  dpi: number
-  audio: readonly string[]
-  video: readonly string[]
-}) {
-  const parameters = new URLSearchParams({
-    token: options.authToken,
-    GUAC_DATA_SOURCE: options.dataSource,
-    GUAC_ID: options.connectionID,
-    GUAC_TYPE: "c",
-    GUAC_WIDTH: String(options.width),
-    GUAC_HEIGHT: String(options.height),
-    GUAC_DPI: String(options.dpi),
-    GUAC_TIMEZONE: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  })
-  if (options.tunnelTicket) parameters.set("remotex_ticket", options.tunnelTicket)
-  for (const mimetype of options.audio) parameters.append("GUAC_AUDIO", mimetype)
-  for (const mimetype of options.video) parameters.append("GUAC_VIDEO", mimetype)
-  for (const mimetype of ["image/webp", "image/png", "image/jpeg"]) parameters.append("GUAC_IMAGE", mimetype)
-  return parameters.toString()
-}
-
-export function revokeGuacamoleSession(token: string) {
-  if (!token) return Promise.resolve()
-  const encoded = encodeURIComponent(token)
-  return fetchWithSession(`/guacamole/api/session?token=${encoded}`, {
-    method: "DELETE",
-    headers: { "Guacamole-Token": token },
-    keepalive: true,
-    signal: AbortSignal.timeout(3_000),
-  }).then(() => undefined, () => undefined)
-}
-
-export function classifyGuacamoleFailure(reason: unknown): GuacamoleFailure {
-  if (reason instanceof GuacamoleSessionError) return reason.failure
-  if (reason instanceof GuacamoleSDKError) return "sdk"
-
-  const status = reason as Partial<Pick<Status, "code" | "message">> | undefined
-  const message = status?.message ?? (reason instanceof Error ? reason.message : "")
-  if (/certificate|\bcert\b/i.test(message)) return "certificate"
-  if (/credssp|security|tls|nla|protocol/i.test(message)) return "security"
-  if (/authentication|credentials|password|logon|unauthorized/i.test(message)) return "authentication"
-  if (/dns|hostname|resolve|name or service not known/i.test(message)) return "dns"
-
-  switch (status?.code) {
-    case 0x0301: return "authentication"
-    case 0x0303: return "forbidden"
-    case 0x0202:
-    case 0x020a:
-    case 0x0308: return "timeout"
-    case 0x0201:
-    case 0x031d: return "busy"
-    case 0x0204:
-    case 0x0207: return "dns"
-    case 0x0205:
-    case 0x0209: return "conflict"
-    case 0x0203:
-    case 0x0208: return "upstream"
-    default: return "disconnected"
-  }
-}
 
 interface GuacamoleSessionCallbacks {
   isActive: () => boolean
@@ -136,139 +35,7 @@ interface GuacamoleSessionDependencies {
   writeClipboard?: (text: string) => Promise<void>
 }
 
-interface DocumentKeyboardTarget {
-  isActive: () => boolean
-  onkeydown: (keysym: number) => void
-  onkeyup: (keysym: number) => void
-}
-
-interface DocumentKeyboardRegistration {
-  capture: (onComplete: (keys: readonly number[]) => void) => () => void
-  release: () => void
-  unregister: () => void
-}
-
-interface DocumentKeyboardCapture {
-  keys: number[]
-  pressed: Set<number>
-  onComplete: (keys: readonly number[]) => void
-}
-
-class DocumentKeyboardRouter {
-  private capture?: DocumentKeyboardCapture
-  private observer?: MutationObserver
-  private readonly owners = new Map<number, DocumentKeyboardTarget>()
-  private readonly targets = new Set<DocumentKeyboardTarget>()
-
-  constructor(sdk: GuacamoleSDK, private readonly document: Document) {
-    const keyboard = new sdk.Keyboard(document)
-    const onkeydown = (keysym: number) => {
-      if (this.capture) {
-        if (!this.capture.keys.includes(keysym)) this.capture.keys.push(keysym)
-        this.capture.pressed.add(keysym)
-        return false
-      }
-      const target = this.getActiveTarget()
-      if (!target) return true
-      this.owners.set(keysym, target)
-      target.onkeydown(keysym)
-      return false
-    }
-    const onkeyup = (keysym: number) => {
-      if (this.capture) {
-        const capture = this.capture
-        capture.pressed.delete(keysym)
-        if (capture.pressed.size === 0 && capture.keys.length > 0) {
-          this.capture = undefined
-          capture.onComplete(capture.keys)
-        }
-        return
-      }
-      const target = this.owners.get(keysym)
-      if (!target) return
-      this.owners.delete(keysym)
-      target.onkeyup(keysym)
-    }
-    keyboard.onkeydown = onkeydown
-    keyboard.onkeyup = onkeyup
-    let suspended = false
-    const updateSuspension = () => {
-      const next = Boolean(this.document.querySelector("dialog[open]"))
-      if (next === suspended) return
-      suspended = next
-      if (suspended) {
-        keyboard.reset()
-        keyboard.onkeydown = null
-        keyboard.onkeyup = null
-        return
-      }
-      keyboard.onkeydown = onkeydown
-      keyboard.onkeyup = onkeyup
-    }
-    const Observer = document.defaultView?.MutationObserver
-    if (Observer) {
-      this.observer = new Observer(updateSuspension)
-      this.observer.observe(document.documentElement, { attributes: true, attributeFilter: ["open"], subtree: true })
-    }
-    updateSuspension()
-  }
-
-  register(target: DocumentKeyboardTarget): DocumentKeyboardRegistration {
-    this.targets.add(target)
-    return {
-      capture: (onComplete) => {
-        this.releaseAll()
-        return this.captureKeys(onComplete)
-      },
-      release: () => this.release(target),
-      unregister: () => {
-        this.release(target)
-        this.targets.delete(target)
-      },
-    }
-  }
-
-  private release(target: DocumentKeyboardTarget) {
-    for (const [keysym, owner] of this.owners) {
-      if (owner !== target) continue
-      this.owners.delete(keysym)
-      target.onkeyup(keysym)
-    }
-  }
-
-  private releaseAll() {
-    for (const [keysym, target] of this.owners) {
-      this.owners.delete(keysym)
-      target.onkeyup(keysym)
-    }
-  }
-
-  private captureKeys(onComplete: (keys: readonly number[]) => void) {
-    const capture: DocumentKeyboardCapture = { keys: [], pressed: new Set(), onComplete }
-    this.capture = capture
-    return () => {
-      if (this.capture === capture) this.capture = undefined
-    }
-  }
-
-  private getActiveTarget() {
-    if (this.document.querySelector("dialog[open]")) return
-    if (this.document.activeElement?.closest("[data-local-keyboard]")) return
-    return [...this.targets].find((target) => target.isActive())
-  }
-}
-
-const documentKeyboards = new WeakMap<Document, DocumentKeyboardRouter>()
-
-function getDocumentKeyboard(sdk: GuacamoleSDK, document: Document) {
-  const existing = documentKeyboards.get(document)
-  if (existing) return existing
-  const keyboard = new DocumentKeyboardRouter(sdk, document)
-  documentKeyboards.set(document, keyboard)
-  return keyboard
-}
-
-export class GuacamoleSession implements KeyEventSender {
+export class GuacamoleSession {
   private abortController?: AbortController
   private audioTypes: readonly string[] = []
   private audioContext?: AudioContext
@@ -279,7 +46,7 @@ export class GuacamoleSession implements KeyEventSender {
   private generation = 0
   private keyboard?: DocumentKeyboardRegistration
   private clipboardRevision = 0
-  private clipboardSyncing = false
+  private clipboardSync?: Promise<boolean>
   private lastClipboard?: string
   private reported = false
   private sdk?: GuacamoleSDK
@@ -303,29 +70,31 @@ export class GuacamoleSession implements KeyEventSender {
     ++this.clipboardRevision
     this.lastClipboard = undefined
     this.reported = false
-    this.abortController = new AbortController()
+    const controller = new AbortController()
+    this.abortController = controller
+    const { signal } = controller
+    const isCurrent = () => generation === this.generation && !signal.aborted
 
     try {
       const ticket = readGuacamoleTicket(connectionURL)
       if (!ticket) throw new GuacamoleSessionError("authentication", "Guacamole ticket is missing")
       const sdk = await (this.dependencies.loadSDK ?? loadGuacamoleSDK)()
-      if (generation !== this.generation) return
+      if (!isCurrent()) return
       this.sdk = sdk
       this.audioTypes = sdk.AudioPlayer.getSupportedTypes()
-      const auth = await (this.dependencies.authenticate ?? authenticateGuacamole)(ticket, this.abortController.signal)
-      if (generation !== this.generation) {
+      const auth = await (this.dependencies.authenticate ?? authenticateGuacamole)(ticket, signal)
+      if (!isCurrent()) {
         void (this.dependencies.revoke ?? revokeGuacamoleSession)(auth.authToken)
         return
       }
 
       this.token = auth.authToken
-      const tunnelTicket = await api.tunnelTicket(this.abortController.signal)
-      if (generation !== this.generation) return
+      const tunnelTicket = await api.tunnelTicket(signal)
+      if (!isCurrent()) return
       this.ensureKeyboard()
       this.createClient(connectionID, auth, tunnelTicket)
     } catch (reason) {
-      if (generation !== this.generation || this.abortController?.signal.aborted) return
-      this.finish(classifyGuacamoleFailure(reason))
+      if (isCurrent()) this.finish(classifyGuacamoleFailure(reason))
     }
   }
 
@@ -363,32 +132,47 @@ export class GuacamoleSession implements KeyEventSender {
   }
 
   async syncClipboard() {
-    if (!this.connected || !this.callbacks.isActive() || this.clipboardSyncing) return
+    await this.readClipboardOnce()
+  }
+
+  private readClipboardOnce() {
+    if (!this.connected || !this.callbacks.isActive()) return Promise.resolve(false)
+    if (this.clipboardSync) return this.clipboardSync
+    const pending = this.readLocalClipboard().finally(() => {
+      if (this.clipboardSync === pending) this.clipboardSync = undefined
+    })
+    this.clipboardSync = pending
+    return pending
+  }
+
+  private async readLocalClipboard() {
     const generation = this.generation
     const clipboardRevision = this.clipboardRevision
+    const isCurrent = () => generation === this.generation && clipboardRevision === this.clipboardRevision && this.connected && this.callbacks.isActive()
     const read = this.dependencies.readClipboard ?? (() => navigator.clipboard?.readText() ?? Promise.reject(new Error("Clipboard API is unavailable")))
-    this.clipboardSyncing = true
     try {
       const text = await read()
-      if (generation !== this.generation || clipboardRevision !== this.clipboardRevision || !this.connected || !this.callbacks.isActive()) return
-      if (text === this.lastClipboard) return
+      if (!isCurrent()) return false
+      if (text === this.lastClipboard) return true
       if (!this.sendClipboard(text)) throw new Error("Clipboard stream is unavailable")
       this.lastClipboard = text
       this.callbacks.onClipboard?.("local-to-remote", true, text)
+      return true
     } catch {
-      if (generation !== this.generation || clipboardRevision !== this.clipboardRevision || !this.connected || !this.callbacks.isActive()) return
-      this.callbacks.onClipboard?.("local-to-remote", false)
-    } finally {
-      this.clipboardSyncing = false
+      if (isCurrent()) this.callbacks.onClipboard?.("local-to-remote", false)
+      return false
     }
   }
 
-  sendKeyEvent(pressed: 0 | 1, keysym: number) {
-    this.client?.sendKeyEvent(pressed, keysym)
+  private async pasteClipboard(paste: () => void) {
+    const generation = this.generation
+    const synced = await this.readClipboardOnce()
+    if (!synced || generation !== this.generation || !this.connected || !this.callbacks.isActive()) return
+    paste()
   }
 
   sendKeys(keys: readonly number[]) {
-    const holdMs = keys.includes(CAPS_LOCK_KEYSYM) ? CAPS_LOCK_HOLD_MS : 0
+    const holdMs = keys.includes(guacamoleKeys.capsLock) ? CAPS_LOCK_HOLD_MS : 0
     const sent = sendKeyCombination(this.client, keys, holdMs)
     if (sent) this.callbacks.onActivity()
     return sent
@@ -446,12 +230,14 @@ export class GuacamoleSession implements KeyEventSender {
 
   private ensureKeyboard() {
     if (this.keyboard || !this.sdk) return
-    this.keyboard = getDocumentKeyboard(this.sdk, this.keyboardInput.ownerDocument).register({
+    this.keyboard = registerDocumentKeyboard(this.sdk, this.keyboardInput.ownerDocument, {
       isActive: () => this.connected && this.callbacks.isActive(),
       onkeydown: (keysym) => {
         this.client?.sendKeyEvent(1, keysym)
         this.callbacks.onActivity()
       },
+      onpaste: (text) => this.setClipboard(text),
+      onPasteShortcut: (paste) => { void this.pasteClipboard(paste) },
       onkeyup: (keysym) => this.client?.sendKeyEvent(0, keysym),
     })
   }
@@ -532,11 +318,16 @@ export class GuacamoleSession implements KeyEventSender {
       const reader = new sdk.StringReader(stream)
       let text = ""
       reader.ontext = (value) => { text += value }
-      reader.onend = () => void this.writeClipboard(text)
+      reader.onend = () => {
+        if (this.client === client) void this.writeClipboard(text)
+      }
     }
     display.onresize = () => this.callbacks.onDisplayResize()
-    client.onerror = (status) => this.finish(classifyGuacamoleFailure(status))
+    client.onerror = (status) => {
+      if (this.client === client) this.finish(classifyGuacamoleFailure(status))
+    }
     client.onstatechange = (state) => {
+      if (this.client !== client) return
       if (state === sdk.Client.State.CONNECTED) {
         this.connected = true
         this.callbacks.onReady()
@@ -576,6 +367,7 @@ export class GuacamoleSession implements KeyEventSender {
     this.callbacks.onAudioCapability?.(false)
     this.abortController?.abort()
     this.abortController = undefined
+    this.clipboardSync = undefined
     this.connected = false
     this.keyboard?.release()
 

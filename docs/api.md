@@ -56,6 +56,6 @@ Writable requests use:
 | `POST` | `/api/assets/{id}/test` | Test a saved asset / 测试已保存资产 |
 | `POST` | `/api/assets/test` | Test form values with `{"assetId":"optional","asset":{...}}` / 测试表单内容 |
 
-Test responses contain `reachable`, `latencyMs`, and `message`. There is no public single-asset `GET` endpoint; list assets and select the exact ID.
+Test responses contain `reachable`, `latencyMs`, and `message`. An RDP probe that reaches the server also returns `loginUnverified: true`. Open an RDP session to verify sign-in. List assets and select the exact ID to look up a single asset.
 
 Guacamole itself is exposed through the authenticated `/guacamole/*` reverse proxy for the official browser SDK. That proxy is an implementation detail rather than a stable Awsl RemoteX API.

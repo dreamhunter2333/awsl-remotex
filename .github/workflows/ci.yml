@@ -38,3 +38,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm build
+
+  container-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./tests/e2e/run.sh --repeat-each=2
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: container-e2e
+          path: tests/e2e/artifacts/

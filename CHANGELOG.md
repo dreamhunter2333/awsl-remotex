@@ -2,6 +2,14 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.30 - 2026-11-23
+
+- Report RDP reachability separately from desktop sign-in and clear stale connection-test results when connection settings change.
+- Improve clipboard synchronization, remote input cleanup, and workspace session handling.
+- Read each asset and its saved credentials together and make schema and asset updates atomic.
+- Build releases with Go 1.26.11, which includes standard-library security fixes, and remove implicit trust in client IP headers.
+- Add Docker end-to-end coverage for SSH, VNC, xrdp, and Tinyauth in GitHub Actions.
+
 ## v0.2.29 - 2026-11-23
 
 - Replaced application session cookies with signed Bearer JWTs and one-time WebSocket tickets. Sessions expire after eight hours and close their remote connections on expiry or logout. Sign in again after upgrading.

@@ -13,8 +13,7 @@ type Repository interface {
 	CreateAsset(context.Context, Input) (Asset, error)
 	UpdateAsset(context.Context, string, Input) (Asset, error)
 	DeleteAsset(context.Context, string) error
-	GetAsset(context.Context, string) (Asset, error)
-	GetCredential(context.Context, string) (credential.Value, error)
+	GetAssetWithCredential(context.Context, string) (Asset, credential.Value, error)
 	ResolveCredential(context.Context, string, Input) (credential.Value, error)
 }
 
@@ -56,44 +55,36 @@ func (service *Service) Connect(ctx context.Context, id, theme string) (string, 
 	if service.connector == nil {
 		return "", time.Time{}, errors.New("Apache Guacamole is not configured")
 	}
-	asset, err := service.repository.GetAsset(ctx, id)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	value, err := service.repository.GetCredential(ctx, id)
+	asset, value, err := service.repository.GetAssetWithCredential(ctx, id)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	return service.connector.ConnectionURL(asset, value, theme)
 }
 
-func (service *Service) TestSaved(ctx context.Context, id string) error {
+func (service *Service) TestSaved(ctx context.Context, id string) (loginUnverified bool, err error) {
 	if service.tester == nil {
-		return errors.New("guacd is not configured")
+		return false, errors.New("guacd is not configured")
 	}
-	asset, err := service.repository.GetAsset(ctx, id)
+	asset, value, err := service.repository.GetAssetWithCredential(ctx, id)
 	if err != nil {
-		return err
+		return false, err
 	}
-	value, err := service.repository.GetCredential(ctx, id)
-	if err != nil {
-		return err
-	}
-	return service.tester.Test(ctx, asset, value)
+	return asset.Protocol == "rdp", service.tester.Test(ctx, asset, value)
 }
 
-func (service *Service) TestInput(ctx context.Context, id string, input Input) error {
+func (service *Service) TestInput(ctx context.Context, id string, input Input) (loginUnverified bool, err error) {
 	if service.tester == nil {
-		return errors.New("guacd is not configured")
+		return false, errors.New("guacd is not configured")
 	}
 	if err := input.Normalize(); err != nil {
-		return err
+		return false, err
 	}
 	value, err := service.repository.ResolveCredential(ctx, id, input)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return service.tester.Test(ctx, Asset{
+	return input.Protocol == "rdp", service.tester.Test(ctx, Asset{
 		ID:             id,
 		Name:           input.Name,
 		Group:          input.Group,

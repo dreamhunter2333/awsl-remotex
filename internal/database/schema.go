@@ -2,14 +2,26 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
 func (store *Store) initialize(ctx context.Context) error {
-	statements := []string{
+	for _, statement := range []string{
 		`PRAGMA journal_mode = WAL`,
 		`PRAGMA foreign_keys = ON`,
 		`PRAGMA busy_timeout = 5000`,
+	} {
+		if _, err := store.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("configure sqlite: %w", err)
+		}
+	}
+	tx, err := store.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin schema migration: %w", err)
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
 		`CREATE TABLE IF NOT EXISTS assets (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -25,29 +37,40 @@ func (store *Store) initialize(ctx context.Context) error {
 			updated_at TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS assets_group_name_idx ON assets(group_name, name)`,
-	}
-
-	for _, statement := range statements {
-		if _, err := store.db.ExecContext(ctx, statement); err != nil {
+	} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("initialize sqlite: %w", err)
 		}
 	}
-	if err := store.ensureColumn(ctx, "credential_type", "TEXT NOT NULL DEFAULT 'prompt'"); err != nil {
+	columns, err := assetColumnNames(ctx, tx)
+	if err != nil {
 		return err
 	}
-	if err := store.ensureColumn(ctx, "credential", "BLOB"); err != nil {
-		return err
+	for _, column := range []struct{ name, definition string }{
+		{"credential_type", "TEXT NOT NULL DEFAULT 'prompt'"},
+		{"credential", "BLOB"},
+		{"settings_json", "TEXT NOT NULL DEFAULT '{}'"},
+	} {
+		if columns[column.name] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE assets ADD COLUMN `+column.name+` `+column.definition); err != nil {
+			return fmt.Errorf("add assets.%s: %w", column.name, err)
+		}
 	}
-	return store.ensureColumn(ctx, "settings_json", "TEXT NOT NULL DEFAULT '{}'")
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit schema migration: %w", err)
+	}
+	return nil
 }
 
-func (store *Store) ensureColumn(ctx context.Context, name, definition string) error {
-	rows, err := store.db.QueryContext(ctx, `PRAGMA table_info(assets)`)
+func assetColumnNames(ctx context.Context, tx *sql.Tx) (map[string]bool, error) {
+	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(assets)`)
 	if err != nil {
-		return fmt.Errorf("read assets schema: %w", err)
+		return nil, fmt.Errorf("read assets schema: %w", err)
 	}
 	defer rows.Close()
-
+	columns := make(map[string]bool)
 	for rows.Next() {
 		var index int
 		var columnName string
@@ -56,17 +79,12 @@ func (store *Store) ensureColumn(ctx context.Context, name, definition string) e
 		var defaultValue any
 		var primaryKey int
 		if err := rows.Scan(&index, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return fmt.Errorf("scan assets schema: %w", err)
+			return nil, fmt.Errorf("scan assets schema: %w", err)
 		}
-		if columnName == name {
-			return nil
-		}
+		columns[columnName] = true
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate assets schema: %w", err)
+		return nil, fmt.Errorf("iterate assets schema: %w", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `ALTER TABLE assets ADD COLUMN `+name+` `+definition); err != nil {
-		return fmt.Errorf("add assets.%s: %w", name, err)
-	}
-	return nil
+	return columns, nil
 }

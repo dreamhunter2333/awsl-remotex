@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
 
+import { readLocalStorage, writeLocalStorage } from "./local-storage"
+
+const localeKey = "awsl-remotex.locale"
+const themeKey = "awsl-remotex.theme"
+
 const messages = {
   "zh-CN": {
     language: "语言",
@@ -90,6 +95,7 @@ const messages = {
     testConnection: "测试连接",
     testingConnection: "正在测试…",
     connectionReachable: "连接成功，耗时 {latency} ms",
+    rdpReachable: "RDP 服务可达，耗时 {latency} ms。请打开会话验证登录。",
     connectionUnreachable: "连接失败：{message}",
     editAsset: "编辑资产",
     saveChanges: "保存修改",
@@ -209,6 +215,7 @@ const messages = {
     testConnection: "Test connection",
     testingConnection: "Testing…",
     connectionReachable: "Connected in {latency} ms",
+    rdpReachable: "RDP server reachable in {latency} ms. Open a session to verify sign-in.",
     connectionUnreachable: "Connection failed: {message}",
     editAsset: "Edit asset",
     saveChanges: "Save changes",
@@ -243,7 +250,7 @@ const messages = {
 
 export type Locale = keyof typeof messages
 export type ThemeMode = "system" | "dark" | "light"
-type MessageKey = keyof (typeof messages)["zh-CN"]
+export type MessageKey = keyof (typeof messages)["zh-CN"]
 type Values = Record<string, string | number>
 
 interface PreferencesContextValue {
@@ -258,18 +265,14 @@ const PreferencesContext = createContext<PreferencesContextValue | null>(null)
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>(() => {
-    const stored = localStorage.getItem("awsl-remotex.locale")
+    const stored = readLocalStorage(localeKey)
     if (stored === "zh-CN" || stored === "en") return stored
     return navigator.language.toLowerCase().startsWith("zh") ? "zh-CN" : "en"
   })
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    const stored = localStorage.getItem("awsl-remotex.theme")
-    if (stored === "dark" || stored === "light" || stored === "system") return stored
-    return "system"
-  })
+  const [theme, setTheme] = useState<ThemeMode>(() => readTheme(readLocalStorage(themeKey)))
 
   useEffect(() => {
-    localStorage.setItem("awsl-remotex.locale", locale)
+    writeLocalStorage(localeKey, locale)
     document.documentElement.lang = locale
   }, [locale])
 
@@ -278,13 +281,22 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     const applyTheme = () => {
       const resolved = theme === "system" ? (media.matches ? "dark" : "light") : theme
       document.documentElement.dataset.theme = resolved
+      document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", theme === "system" ? "light dark" : theme)
       document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#282c34" : "#fafafa")
     }
-    localStorage.setItem("awsl-remotex.theme", theme)
+    writeLocalStorage(themeKey, theme === "system" ? null : theme)
     applyTheme()
     media.addEventListener("change", applyTheme)
     return () => media.removeEventListener("change", applyTheme)
   }, [theme])
+
+  useEffect(() => {
+    const updateTheme = (event: StorageEvent) => {
+      if (event.key === themeKey || event.key === null) setTheme(readTheme(event.newValue))
+    }
+    window.addEventListener("storage", updateTheme)
+    return () => window.removeEventListener("storage", updateTheme)
+  }, [])
 
   const value = useMemo<PreferencesContextValue>(() => ({
     locale,
@@ -307,4 +319,8 @@ export function usePreferences() {
   const value = useContext(PreferencesContext)
   if (!value) throw new Error("usePreferences must be used within PreferencesProvider")
   return value
+}
+
+function readTheme(value: string | null): ThemeMode {
+  return value === "dark" || value === "light" ? value : "system"
 }

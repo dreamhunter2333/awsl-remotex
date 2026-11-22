@@ -2,7 +2,7 @@
 
 ## Toolchain / 工具链
 
-- Go 1.26, as declared by [go.mod](../go.mod)
+- Go 1.26.11, as declared by [go.mod](../go.mod)
 - Node.js 24, as declared by [.node-version](../.node-version)
 - pnpm 11.22.0, as declared by [web/package.json](../web/package.json)
 
@@ -25,6 +25,18 @@ pnpm --dir web build
 ```
 
 The repository currently has no separate lint script. TypeScript checking is part of `pnpm --dir web build`.
+
+### Docker E2E / 容器端到端测试
+
+本地需启动 Docker，并安装 `docker compose` 或 `docker-compose`。测试从当前工作区构建应用，在独立的 Compose 网络中启动 Guacamole、guacd、OpenSSH、x11vnc、xrdp、Tinyauth 和 Playwright Chromium，无需分配宿主机端口。
+
+```bash
+make e2e
+./tests/e2e/run.sh --repeat-each=3
+./tests/e2e/run.sh --grep 'VNC|RDP'
+```
+
+GitHub Actions 的 `container-e2e` 任务会运行同一入口，每个用例执行两次。脚本退出时清理测试容器和数据卷，并在 `tests/e2e/artifacts/` 保留 Playwright 报告、失败追踪和 Compose 日志。也可通过 `E2E_ARTIFACTS_DIR` 指定绝对路径。
 
 ## Running locally / 本地运行
 
@@ -59,7 +71,7 @@ The workflow accepts an image tag plus pinned Apache Guacamole and LibVNCServer 
 
 ## Release flow / 发版流程
 
-CI runs on every push to `main` and on pull requests. A pushed `v*` tag runs the release workflow, repeats all tests, cross-compiles Linux `amd64` and `arm64` binaries, and publishes a multi-architecture GHCR image with version, minor-line, and `latest` tags.
+CI runs on every push to `main` and on pull requests. A pushed `v*` tag runs the release workflow, reruns the backend and frontend checks, cross-compiles Linux `amd64` and `arm64` binaries, and publishes a multi-architecture GHCR image with version, minor-line, and `latest` tags.
 
 Before tagging:
 

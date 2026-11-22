@@ -1,37 +1,42 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { LogOut, PanelLeftClose, PanelLeftOpen, Plus, Search, X } from "lucide-react"
+import { LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
-import { AssetButton } from "@/components/asset-button"
 import { AssetDialog } from "@/components/asset-dialog"
+import { AssetSidebar } from "@/components/asset-sidebar"
 import { LoadingScreen, LoginScreen } from "@/components/auth-screens"
 import { ClipboardDialog } from "@/components/clipboard-dialog"
 import { GitHubMark } from "@/components/icons/github-mark"
 import { PreferenceControls } from "@/components/preference-controls"
 import { SessionActions } from "@/components/session-actions"
 import { SessionViewport } from "@/components/session"
+import { SessionTabs } from "@/components/session-tabs"
 import { Button } from "@/components/ui/button"
 import { api, completeOIDC, expireSession, sessionExpiredEvent, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
-import { displayGroup, protocolMeta } from "@/lib/assets"
 import type { ClipboardDirection } from "@/lib/guacamole-session"
+import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage"
 import { usePreferences } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 import { useSessions } from "@/hooks/use-sessions"
+
+const sidebarKey = "awsl-remotex.sidebar"
 
 export default function App() {
   const { t } = usePreferences()
   const [authStatus, setAuthStatus] = useState<AuthStatus>()
   const [assets, setAssets] = useState<Asset[]>([])
   const [selectedAsset, setSelectedAsset] = useState<string>()
-  const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const workspaceRequest = useRef<AbortController>(null)
   const [loggingOut, setLoggingOut] = useState(false)
   const loggingOutRef = useRef(false)
   const [error, setError] = useState("")
+  const [oidcCallbackFailed, setOIDCCallbackFailed] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingAsset, setEditingAsset] = useState<Asset>()
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem("awsl-remotex.sidebar") === "collapsed" || (localStorage.getItem("awsl-remotex.sidebar") === null && window.matchMedia("(max-width: 639px)").matches),
-  )
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const stored = readLocalStorage(sidebarKey)
+    return stored === null ? window.matchMedia("(max-width: 639px)").matches : stored === "collapsed"
+  })
   const [fullscreen, setFullscreen] = useState(false)
   const [clipboardOpen, setClipboardOpen] = useState(false)
   const [sessionClipboards, setSessionClipboards] = useState<Record<string, string>>({})
@@ -46,6 +51,9 @@ export default function App() {
   )
   const resetSessions = session.reset
   const clearWorkspace = useCallback(() => {
+    workspaceRequest.current?.abort()
+    setLoading(false)
+    setError("")
     setAssets([])
     setSelectedAsset(undefined)
     setSessionClipboards({})
@@ -54,6 +62,15 @@ export default function App() {
     setDialogOpen(false)
     setEditingAsset(undefined)
     setAuthStatus((status) => status && { ...status, authenticated: false })
+  }, [])
+
+  const loadWorkspace = useCallback(async (signal: AbortSignal) => {
+    const status = await api.authStatus(signal)
+    if (signal.aborted) return
+    setAuthStatus(status)
+    if (!status.authenticated) return
+    const currentAssets = await api.listAssets(signal)
+    if (!signal.aborted) setAssets(currentAssets)
   }, [])
 
   useEffect(() => {
@@ -72,17 +89,24 @@ export default function App() {
   }, [authStatus])
 
   useEffect(() => {
+    const request = new AbortController()
+    const { signal } = request
+    workspaceRequest.current = request
     completeOIDC()
-      .catch(() => setError(t("oidcLoginFailed")))
-      .then(() => api.authStatus())
-      .then(async (status) => {
-        setAuthStatus(status)
-        if (!status.authenticated) return
-        setAssets(await api.listAssets())
+      .catch(() => {
+        if (!signal.aborted) setOIDCCallbackFailed(true)
       })
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false))
-  }, [])
+      .then(() => {
+        if (!signal.aborted) return loadWorkspace(signal)
+      })
+      .catch((reason: Error) => {
+        if (!signal.aborted) setError(reason.message)
+      })
+      .finally(() => {
+        if (!signal.aborted) setLoading(false)
+      })
+    return () => workspaceRequest.current?.abort()
+  }, [loadWorkspace])
 
   useEffect(() => {
     const onFullscreenChange = () => setFullscreen(document.fullscreenElement === sessionLayoutRef.current)
@@ -91,7 +115,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem("awsl-remotex.sidebar", sidebarCollapsed ? "collapsed" : "expanded")
+    writeLocalStorage(sidebarKey, sidebarCollapsed ? "collapsed" : "expanded")
   }, [sidebarCollapsed])
 
   useEffect(() => {
@@ -100,21 +124,11 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [clipboardToast])
 
-  const groups = useMemo(() => {
-    const normalized = query.trim().toLowerCase()
-    const visibleAssets = normalized
-      ? assets.filter((asset) => `${asset.name} ${asset.host} ${asset.group} ${asset.protocol}`.toLowerCase().includes(normalized))
-      : assets
-    const result = new Map<string, Asset[]>()
-    for (const asset of visibleAssets) {
-      const group = result.get(asset.group) ?? []
-      group.push(asset)
-      result.set(asset.group, group)
-    }
-    return [...result.entries()]
-  }, [assets, query])
-
   const assetsByID = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets])
+  const openAssets = session.sessions.flatMap((id) => {
+    const asset = assetsByID.get(id)
+    return asset ? [asset] : []
+  })
   const activeAsset = assetsByID.get(session.activeSession ?? "")
   const activeConnected = Boolean(activeAsset && session.connectedIDs.has(activeAsset.id))
   const activeConnecting = Boolean(activeAsset && session.connectingIDs.has(activeAsset.id))
@@ -149,15 +163,19 @@ export default function App() {
   }
 
   const finishLogin = async () => {
+    workspaceRequest.current?.abort()
+    const request = new AbortController()
+    const { signal } = request
+    workspaceRequest.current = request
     setLoading(true)
     setError("")
+    setOIDCCallbackFailed(false)
     try {
-      setAuthStatus(await api.authStatus())
-      setAssets(await api.listAssets())
+      await loadWorkspace(signal)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("connectionFailed"))
+      if (!signal.aborted) setError(reason instanceof Error ? reason.message : t("connectionFailed"))
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }
 
@@ -203,7 +221,7 @@ export default function App() {
     return <LoadingScreen message={error || t("checkingAuthentication")} error={Boolean(error)} />
   }
   if (!authStatus.authenticated) {
-    return <LoginScreen onAuthenticated={finishLogin} oidc={authStatus.oidc} callbackError={error} />
+    return <LoginScreen onAuthenticated={finishLogin} oidc={authStatus.oidc} callbackError={error || (oidcCallbackFailed ? t("oidcLoginFailed") : undefined)} />
   }
 
   return (
@@ -242,100 +260,30 @@ export default function App() {
         "relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)] transition-[grid-template-columns] duration-200",
         !sidebarCollapsed && "sm:grid-cols-[260px_minmax(0,1fr)]",
       )}>
-        <aside id="asset-sidebar" inert={sidebarCollapsed} data-local-keyboard className={cn(
-          "absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] min-w-0 flex-col overflow-hidden bg-[var(--panel)] shadow-xl transition-transform duration-200 sm:static sm:w-auto sm:shadow-none",
-          sidebarCollapsed ? "-translate-x-full border-r-0 sm:translate-x-0" : "translate-x-0 border-r border-[var(--border)]",
-        )}>
-          <div className="flex h-11 shrink-0 items-center border-b border-[var(--border)] px-2.5">
-            <label className="flex h-7.5 min-w-0 flex-1 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--input)] px-2 transition focus-within:border-[var(--accent)] focus-within:ring-2 focus-within:ring-[var(--accent-soft)]">
-              <Search className="size-3.5 shrink-0 text-[var(--subtle)]" />
-              <input
-                data-local-keyboard
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-[11px] text-[var(--foreground)] outline-none placeholder:text-[var(--subtle)]"
-                placeholder={t("filterConnections")}
-                aria-label={t("filterConnections")}
-              />
-            </label>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {loading && <p className="px-2 py-3 text-xs text-[var(--muted)]">{t("loadingAssets")}</p>}
-            {error && <p className="px-2 py-3 text-xs text-[var(--danger)]">{error}</p>}
-            {!loading && !error && groups.length === 0 && !sidebarCollapsed && <div className="px-2 py-8 text-center text-xs text-[var(--muted)]">{t("noAssets")}</div>}
-            {groups.map(([group, groupAssets]) => (
-              <section key={group} className="mb-4">
-                <div className="mb-1 flex h-6 items-center justify-between px-2 text-[10px] font-semibold tracking-wide text-[var(--subtle)]">
-                  <span>{displayGroup(group, t("defaultGroup"))}</span>
-                  <span>{groupAssets.length}</span>
-                </div>
-                <div className="space-y-0.5">
-                  {groupAssets.map((asset) => (
-                    <AssetButton
-                      key={asset.id}
-                      asset={asset}
-                      active={session.activeSession === asset.id}
-                      selected={selectedAsset === asset.id}
-                      onClick={() => setSelectedAsset(asset.id)}
-                      onDoubleClick={() => { setSelectedAsset(asset.id); session.open(asset) }}
-                      onEdit={() => openDialog(asset)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-
-          <div className="flex justify-start border-t border-[var(--border)] p-2">
-            <Button variant="ghost" size="sm" onClick={() => openDialog()}><Plus className="size-3.5" />{t("addAsset")}</Button>
-          </div>
-        </aside>
+        <AssetSidebar
+          assets={assets}
+          activeAssetId={session.activeSession}
+          selectedAsset={selectedAsset}
+          collapsed={sidebarCollapsed}
+          loading={loading}
+          error={error}
+          onAdd={() => openDialog()}
+          onEdit={openDialog}
+          onSelect={setSelectedAsset}
+          onConnect={(asset) => {
+            setSelectedAsset(asset.id)
+            session.open(asset)
+          }}
+        />
 
         <main ref={sessionLayoutRef} className="@container col-start-2 flex min-w-0 flex-col bg-[var(--canvas)]">
           <div className="flex h-9 shrink-0 border-b border-[var(--border)] bg-[var(--surface)]">
-            <div role="tablist" data-local-keyboard className="flex min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {session.sessions.map((id) => {
-                const asset = assetsByID.get(id)
-                if (!asset) return null
-                const meta = protocolMeta[asset.protocol]
-                const isActive = session.activeSession === id
-                return (
-                  <div key={id} className={cn(
-                    "group grid h-9 min-w-[132px] max-w-[190px] grid-cols-[minmax(0,1fr)_24px] items-center border-r border-b-2 border-[var(--border)] text-[11px] text-[var(--muted)] transition hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)]",
-                    isActive ? "border-b-[var(--accent)] bg-[var(--background)] text-[var(--foreground)]" : "border-b-transparent",
-                  )}>
-                    <button
-                      type="button"
-                      role="tab"
-                      id={`session-tab-${id}`}
-                      aria-controls={`session-panel-${id}`}
-                      aria-selected={isActive}
-                      tabIndex={isActive ? 0 : -1}
-                      onKeyDown={(event) => {
-                        const index = session.sessions.indexOf(id)
-                        const last = session.sessions.length - 1
-                        const next = event.key === "Home" ? 0 : event.key === "End" ? last
-                          : event.key === "ArrowLeft" ? (index + last) % (last + 1)
-                          : event.key === "ArrowRight" ? (index + 1) % (last + 1) : undefined
-                        if (next === undefined) return
-                        event.preventDefault()
-                        const nextID = session.sessions[next]
-                        session.setActiveSession(nextID)
-                        document.getElementById(`session-tab-${nextID}`)?.focus()
-                      }}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => session.setActiveSession(id)}
-                      className="grid h-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-1.5 px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
-                    >
-                      <span className={cn("font-mono text-[9px]", meta.color)}>{meta.label}</span>
-                      <span className="truncate font-medium">{asset.name}</span>
-                    </button>
-                    <button type="button" aria-label={t("closeSession", { name: asset.name })} onClick={() => session.close(id)} className="grid size-5 place-items-center rounded-md text-[var(--subtle)] outline-none hover:bg-[var(--surface-hover)] hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"><X className="size-3" /></button>
-                  </div>
-                )
-              })}
-            </div>
+            <SessionTabs
+              assets={openAssets}
+              activeSession={session.activeSession}
+              onActivate={session.setActiveSession}
+              onClose={session.close}
+            />
             <SessionActions
               active={Boolean(activeAsset)}
               connected={activeConnected}
@@ -358,7 +306,7 @@ export default function App() {
           </div>
 
           <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--canvas)]">
-            {session.sessions.length === 0 && (
+            {openAssets.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <p className="text-sm font-medium text-[var(--muted)]">{t("noSession")}</p>
                 <p className="max-w-sm text-xs leading-5 text-[var(--subtle)]">{t("connectHint")}</p>
@@ -369,9 +317,8 @@ export default function App() {
                   : <Button variant="outline" size="sm" onClick={() => openDialog()}>{t("addAsset")}</Button>}
               </div>
             )}
-            {session.sessions.map((id) => {
-              const asset = assetsByID.get(id)
-              if (!asset) return null
+            {openAssets.map((asset) => {
+              const { id } = asset
               return (
                 <div key={id} id={`session-panel-${id}`} role="tabpanel" aria-labelledby={`session-tab-${id}`} className={cn("absolute inset-0", session.activeSession === id ? "visible z-10" : "invisible pointer-events-none")}>
                   <SessionViewport

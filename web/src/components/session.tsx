@@ -1,10 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react"
 import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { Asset } from "@/lib/api"
-import { GuacamoleSession, type ClipboardDirection, type GuacamoleFailure } from "@/lib/guacamole-session"
-import { usePreferences } from "@/lib/preferences"
+import type { GuacamoleFailure } from "@/lib/guacamole-connection"
+import { GuacamoleSession, type ClipboardDirection } from "@/lib/guacamole-session"
+import { usePreferences, type MessageKey } from "@/lib/preferences"
 import { cn } from "@/lib/utils"
 
 export interface SessionHandle {
@@ -18,6 +19,7 @@ export interface SessionHandle {
 }
 
 interface SessionViewportProps {
+  ref?: Ref<SessionHandle>
   active: boolean
   asset: Asset
   connectionURL?: string
@@ -31,7 +33,22 @@ interface SessionViewportProps {
   onClipboard: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
 }
 
-export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(function SessionViewport({
+const failureMessages = {
+  sdk: "guacamoleSdkError",
+  authentication: "guacamoleAuthenticationError",
+  forbidden: "guacamoleForbiddenError",
+  dns: "guacamoleDnsError",
+  certificate: "guacamoleCertificateError",
+  security: "guacamoleSecurityError",
+  timeout: "guacamoleTimeoutError",
+  busy: "guacamoleBusyError",
+  conflict: "guacamoleConflictError",
+  upstream: "guacamoleUpstreamError",
+  disconnected: "sessionEnded",
+} satisfies Record<GuacamoleFailure, MessageKey>
+
+export function SessionViewport({
+  ref,
   active,
   asset,
   connectionURL,
@@ -43,7 +60,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   onActivity,
   onAudioCapability,
   onClipboard,
-}, ref) {
+}: SessionViewportProps) {
   const { t } = usePreferences()
   const [frameReady, setFrameReady] = useState(false)
   const viewportRef = useRef<HTMLElement>(null)
@@ -51,41 +68,14 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
   const displaySurfaceRef = useRef<HTMLDivElement>(null)
   const keyboardInputRef = useRef<HTMLTextAreaElement>(null)
   const controllerRef = useRef<GuacamoleSession>(null)
-  const activeRef = useRef(active)
-  const assetRef = useRef(asset)
   const vncSettingsRef = useRef(asset.settings?.vnc)
-  const onSessionEndedRef = useRef(onSessionEnded)
-  const onReadyRef = useRef(onReady)
-  const onActivityRef = useRef(onActivity)
-  const onAudioCapabilityRef = useRef(onAudioCapability)
-  const onClipboardRef = useRef(onClipboard)
-  const notifyResizeRef = useRef<() => void>(() => undefined)
+  const notifyResizeRef = useRef<() => void>(null)
+  const bindings = { active, asset, onSessionEnded, onReady, onActivity, onAudioCapability, onClipboard, t }
+  const current = useRef(bindings)
 
-  activeRef.current = active
-  assetRef.current = asset
-  onSessionEndedRef.current = onSessionEnded
-  onReadyRef.current = onReady
-  onActivityRef.current = onActivity
-  onAudioCapabilityRef.current = onAudioCapability
-  onClipboardRef.current = onClipboard
-
-  const failureMessage = (failure: GuacamoleFailure) => {
-    switch (failure) {
-      case "sdk": return t("guacamoleSdkError")
-      case "authentication": return t("guacamoleAuthenticationError")
-      case "forbidden": return t("guacamoleForbiddenError")
-      case "dns": return t("guacamoleDnsError")
-      case "certificate": return t("guacamoleCertificateError")
-      case "security": return t("guacamoleSecurityError")
-      case "timeout": return t("guacamoleTimeoutError")
-      case "busy": return t("guacamoleBusyError")
-      case "conflict": return t("guacamoleConflictError")
-      case "upstream": return t("guacamoleUpstreamError")
-      default: return t("sessionEnded")
-    }
-  }
-  const failureMessageRef = useRef(failureMessage)
-  failureMessageRef.current = failureMessage
+  useLayoutEffect(() => {
+    current.current = bindings
+  })
 
   useImperativeHandle(ref, () => ({
     captureKeys: (onComplete) => controllerRef.current?.captureKeys(onComplete),
@@ -118,20 +108,21 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
     notifyResizeRef.current = notifyResize
 
     const controller = new GuacamoleSession(displayHost, displaySurface, keyboardInput, {
-      isActive: () => activeRef.current,
+      isActive: () => current.current.active,
       isRemoteCursor: () => vncSettingsRef.current?.cursor === "remote",
       isWheelReversed: () => vncSettingsRef.current?.wheelDirection === "reverse",
-      onActivity: () => onActivityRef.current(),
-      onAudioCapability: (supported) => onAudioCapabilityRef.current(supported),
-      onClipboard: (direction, succeeded, text) => onClipboardRef.current(direction, succeeded, text),
+      onActivity: () => current.current.onActivity(),
+      onAudioCapability: (supported) => current.current.onAudioCapability(supported),
+      onClipboard: (direction, succeeded, text) => current.current.onClipboard(direction, succeeded, text),
       onDisplayResize: notifyResize,
       onEnded: (failure) => {
         setFrameReady(false)
-        onSessionEndedRef.current(failureMessageRef.current(failure))
+        const { onSessionEnded, t } = current.current
+        onSessionEnded(t(failureMessages[failure]))
       },
       onReady: () => {
         setFrameReady(true)
-        onReadyRef.current()
+        current.current.onReady()
       },
     })
     controllerRef.current = controller
@@ -140,7 +131,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
     resizeObserver.observe(viewport)
     return () => {
       resizeObserver.disconnect()
-      notifyResizeRef.current = () => undefined
+      notifyResizeRef.current = null
       window.cancelAnimationFrame(resizeFrame)
       window.clearTimeout(resizeTimer)
       window.clearTimeout(resizeRetryTimer)
@@ -151,13 +142,14 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
 
   useEffect(() => {
     setFrameReady(false)
-    vncSettingsRef.current = assetRef.current.settings?.vnc
+    const { asset } = current.current
+    vncSettingsRef.current = asset.settings?.vnc
     const controller = controllerRef.current
     if (!controller || !connectionURL) {
       void controller?.disconnect()
       return
     }
-    void controller.connect(assetRef.current.name, connectionURL)
+    void controller.connect(asset.name, connectionURL)
     return () => { void controller.disconnect() }
   }, [connectionURL])
 
@@ -166,7 +158,7 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
     const syncClipboard = () => void controllerRef.current?.syncClipboard()
     const clipboard = navigator.clipboard as (Clipboard & { onclipboardchange?: unknown }) | undefined
     const supportsClipboardChange = clipboard && "onclipboardchange" in clipboard
-    notifyResizeRef.current()
+    notifyResizeRef.current?.()
     syncClipboard()
     if (!document.activeElement?.closest('[role="tablist"]')) controllerRef.current?.focus()
     if (supportsClipboardChange) clipboard.addEventListener("clipboardchange", syncClipboard)
@@ -212,4 +204,4 @@ export const SessionViewport = forwardRef<SessionHandle, SessionViewportProps>(f
       )}
     </section>
   )
-})
+}

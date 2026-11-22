@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/dreamhunter2333/awsl-remotex/internal/assets"
@@ -25,7 +23,7 @@ type Server struct {
 	guacd              *guacamole.Tester
 	auth               *auth.Gate
 	oidc               *auth.OIDC
-	guacamoleUpstream  string
+	guacamoleUpstream  *url.URL
 	sessionIdleTimeout time.Duration
 }
 
@@ -41,6 +39,10 @@ type Config struct {
 }
 
 func New(store *database.Store, logger *slog.Logger, config Config) (http.Handler, error) {
+	upstream, err := parseGuacamoleUpstream(config.GuacamoleUpstream)
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
 		store:              store,
 		assets:             config.AssetService,
@@ -49,7 +51,7 @@ func New(store *database.Store, logger *slog.Logger, config Config) (http.Handle
 		guacd:              config.GuacdTester,
 		auth:               auth.New(config.AuthUsername, config.AuthPassword, config.OIDC != nil),
 		oidc:               config.OIDC,
-		guacamoleUpstream:  config.GuacamoleUpstream,
+		guacamoleUpstream:  upstream,
 		sessionIdleTimeout: config.SessionIdleTimeout,
 	}
 	if server.assets == nil {
@@ -59,7 +61,7 @@ func New(store *database.Store, logger *slog.Logger, config Config) (http.Handle
 		server.sessionIdleTimeout = 24 * time.Hour
 	}
 	router := chi.NewRouter()
-	router.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+	router.Use(middleware.RequestID, middleware.Recoverer)
 	router.Get("/api/health", server.health)
 	router.Get("/api/ready", server.ready)
 	router.Route("/api/auth", func(router chi.Router) {
@@ -82,42 +84,8 @@ func New(store *database.Store, logger *slog.Logger, config Config) (http.Handle
 		router.Post("/api/assets/{id}/test", server.testAsset)
 	})
 
-	if config.GuacamoleUpstream != "" {
-		upstream, err := url.Parse(config.GuacamoleUpstream)
-		if err != nil {
-			return nil, fmt.Errorf("parse GUACAMOLE_UPSTREAM: %w", err)
-		}
-		proxy := httputil.NewSingleHostReverseProxy(upstream)
-		proxy.ErrorHandler = func(writer http.ResponseWriter, request *http.Request, err error) {
-			server.internalError(writer, request, fmt.Errorf("proxy guacamole: %w", err))
-		}
-		serveGuacamole := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-			request.Header.Del("Authorization")
-			request.Header.Del("Cookie")
-			proxy.ServeHTTP(writer, request)
-		})
-		router.Get("/guacamole/websocket-tunnel", func(writer http.ResponseWriter, request *http.Request) {
-			if server.auth.Required() {
-				query := request.URL.Query()
-				tickets := query["remotex_ticket"]
-				if !strings.EqualFold(request.Header.Get("Upgrade"), "websocket") || len(tickets) != 1 {
-					writeError(writer, http.StatusUnauthorized, "WebSocket authentication required")
-					return
-				}
-				ctx, cancel := server.auth.ConsumeTunnel(request.Context(), tickets[0])
-				if ctx == nil {
-					writeError(writer, http.StatusUnauthorized, "WebSocket authentication required")
-					return
-				}
-				defer cancel()
-				request = request.WithContext(ctx)
-				query.Del("remotex_ticket")
-				request.URL.RawQuery = query.Encode()
-			}
-			serveGuacamole.ServeHTTP(writer, request)
-		})
-		router.Handle("/guacamole", server.auth.Require(serveGuacamole))
-		router.Handle("/guacamole/*", server.auth.Require(serveGuacamole))
+	if upstream != nil {
+		server.mountGuacamole(router, upstream)
 	}
 
 	spa := server.spa()

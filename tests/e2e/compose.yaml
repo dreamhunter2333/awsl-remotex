@@ -1,0 +1,122 @@
+x-app-env: &app-env
+  CREDENTIAL_KEY: "2222222222222222222222222222222222222222222222222222222222222222"
+  GUACAMOLE_JSON_SECRET: "11111111111111111111111111111111"
+  GUACAMOLE_UPSTREAM: http://guacamole:8080
+  GUACD_ADDRESS: guacd:4822
+
+x-app-health: &app-health
+  test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/api/ready"]
+  interval: 2s
+  timeout: 4s
+  retries: 60
+
+services:
+  app:
+    image: ${E2E_APP_IMAGE}
+    build:
+      context: ../..
+      dockerfile: Dockerfile.dev
+    environment:
+      <<: *app-env
+      AUTH_USERNAME: e2e
+      AUTH_PASSWORD: fixture-app-password
+    healthcheck: *app-health
+    depends_on:
+      - guacamole
+
+  open-app:
+    image: ${E2E_APP_IMAGE}
+    pull_policy: never
+    environment: *app-env
+    healthcheck: *app-health
+    depends_on:
+      - guacamole
+
+  oidc-app:
+    image: ${E2E_APP_IMAGE}
+    pull_policy: never
+    environment:
+      <<: *app-env
+      SSL_CERT_FILE: /test-ca/root.crt
+      OIDC_ISSUER: https://auth.remotex.test
+      OIDC_CLIENT_ID: remotex-e2e
+      OIDC_CLIENT_SECRET: fixture-client-secret
+      OIDC_REDIRECT_URL: https://oidc.remotex.test/auth/callback
+    volumes:
+      - test-ca:/test-ca:ro
+    healthcheck: *app-health
+    depends_on:
+      proxy:
+        condition: service_healthy
+      guacamole:
+        condition: service_started
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - test-ca:/test-ca
+    networks:
+      default:
+        aliases:
+          - app.remotex.test
+          - oidc.remotex.test
+          - auth.remotex.test
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget --no-check-certificate -qO /dev/null https://auth.remotex.test/.well-known/openid-configuration
+          && cp /data/caddy/pki/authorities/local/root.crt /test-ca/root.crt
+          && chmod 644 /test-ca/root.crt
+      interval: 2s
+      timeout: 4s
+      retries: 30
+    depends_on:
+      - tinyauth
+
+  tinyauth:
+    image: ghcr.io/tinyauthapp/tinyauth:v5.2.0
+    environment:
+      TINYAUTH_APPURL: https://auth.remotex.test
+      TINYAUTH_AUTH_SUBDOMAINSENABLED: "false"
+      TINYAUTH_AUTH_USERS: 'e2e:$$2y$$10$$02Od0T5nX3LycQtCKx22J.CopHfCpNUJhBHjDegiUbSRqmAMGRGRi'
+      TINYAUTH_OIDC_CLIENTS_REMOTEX_CLIENTID: remotex-e2e
+      TINYAUTH_OIDC_CLIENTS_REMOTEX_CLIENTSECRET: fixture-client-secret
+      TINYAUTH_OIDC_CLIENTS_REMOTEX_TRUSTEDREDIRECTURIS: https://oidc.remotex.test/auth/callback
+      TINYAUTH_OIDC_CLIENTS_REMOTEX_NAME: RemoteX
+
+  guacamole:
+    image: guacamole/guacamole:1.6.0
+    environment:
+      GUACD_HOSTNAME: guacd
+      JSON_ENABLED: "true"
+      JSON_SECRET_KEY: "11111111111111111111111111111111"
+    depends_on:
+      - guacd
+
+  guacd:
+    image: ghcr.io/dreamhunter2333/awsl-remotex-guacd:1.6.1
+
+  desktop:
+    build: ./desktop
+    init: true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          ss -H -ltn | awk '{ sub(/.*:/, "", $$4); listening[$$4] = 1 }
+          END { exit !(listening[22] && listening[3389] && listening[5900] && listening[8000]) }'
+      interval: 2s
+      timeout: 4s
+      retries: 30
+
+  tests:
+    build: .
+    init: true
+    shm_size: 256mb
+    environment:
+      CI: ${CI:-}
+
+volumes:
+  test-ca:

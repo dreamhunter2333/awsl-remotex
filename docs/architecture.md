@@ -15,12 +15,12 @@ Awsl RemoteX 由一个 Go HTTP 服务、Apache Guacamole 和 `guacd` 组成。Go
 - `web/src/components`：界面组件和 Canvas 远程画面。
 - `web/src/hooks/use-sessions.ts`：多 Tab 会话、恢复、排队连接和空闲清理。
 - `web/src/lib/guacamole-sdk.ts`：加载随应用发布的 Guacamole 1.6.0 SDK。
-- `web/src/lib/guacamole-session.ts`：认证、WebSocket 隧道、Canvas、键鼠和剪贴板生命周期。
+- `web/src/lib/guacamole-connection.ts` 负责票据交换、隧道参数和错误分类。`guacamole-session.ts` 管理每条连接的 Canvas、输入、音频和剪贴板，`guacamole-keyboard.ts` 负责页面级键盘路由。
 
 ### 连接流程
 
 1. 浏览器向 `POST /api/assets/{id}/connect` 请求指定资产的短期连接票据。
-2. Go 服务读取资产和加密凭据，生成有效期 30 秒的 Guacamole JSON 票据。
+2. Go 服务在一次 SQLite 查询中读取资产和加密凭据，生成有效期 30 秒的 Guacamole JSON 票据。资产更新在同一事务内读取现有凭据、写入并返回更新结果。
 3. 前端加载随应用发布的官方 SDK，并将票据提交到 `/guacamole/api/tokens`。
 4. SDK 创建 `Guacamole.Client`，通过 `/guacamole/websocket-tunnel` 建立同源 WebSocket 隧道。
 5. Guacamole 将连接交给 `guacd`，由其建立 SSH、RDP 或 VNC 会话；画面直接渲染到页面 Canvas。
@@ -57,12 +57,12 @@ Awsl RemoteX consists of one Go HTTP service, Apache Guacamole, and `guacd`. The
 - `web/src/components`: UI components and the Canvas remote viewport.
 - `web/src/hooks/use-sessions.ts`: tab lifecycle, restoration, connection queueing, and idle cleanup.
 - `web/src/lib/guacamole-sdk.ts`: loading the bundled Guacamole 1.6.0 SDK.
-- `web/src/lib/guacamole-session.ts`: authentication, WebSocket tunnel, Canvas, input, and clipboard lifecycle.
+- `web/src/lib/guacamole-connection.ts` handles ticket exchange, tunnel parameters, and error classification. `guacamole-session.ts` owns each connection's Canvas, input, audio, and clipboard lifecycle. `guacamole-keyboard.ts` routes document-level keyboard events.
 
 ### Connection lifecycle
 
 1. The browser requests a short-lived ticket from `POST /api/assets/{id}/connect`.
-2. The Go service loads the asset and encrypted credential and creates a Guacamole JSON ticket valid for 30 seconds.
+2. The Go service loads the asset and encrypted credential in one SQLite query and creates a Guacamole JSON ticket valid for 30 seconds. Asset updates read existing credentials, write changes, and return the result in one transaction.
 3. The frontend loads the bundled official SDK and exchanges the ticket through `/guacamole/api/tokens`.
 4. The SDK creates a `Guacamole.Client` and opens the same-origin `/guacamole/websocket-tunnel`.
 5. Guacamole delegates SSH, RDP, or VNC to `guacd`, while the SDK renders directly into the page Canvas.

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,25 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
 )
+
+func TestOIDCRejectsInsecureDiscoveryRedirect(t *testing.T) {
+	plain := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("OIDC discovery made an unencrypted request")
+	}))
+	defer plain.Close()
+	issuer := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, plain.URL, http.StatusTemporaryRedirect)
+	}))
+	defer issuer.Close()
+
+	_, err := NewOIDC(oidc.ClientContext(t.Context(), issuer.Client()), OIDCConfig{
+		Issuer: issuer.URL, ClientID: "remotex", ClientSecret: "client-secret",
+		RedirectURL: "https://remotex.example.test/auth/callback",
+	})
+	if err == nil || !strings.Contains(err.Error(), "OIDC redirects must use HTTPS") {
+		t.Fatalf("expected HTTPS redirect error, got %v", err)
+	}
+}
 
 func TestOIDCVerifiesProviderJWTAndPKCE(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
