@@ -4,12 +4,6 @@ set -eu
 mkdir -p /run/sshd /run/xrdp
 ssh-keygen -A
 x11vnc -storepasswd fixture /run/vnc-password
-cat > /etc/xrdp/startwm.sh <<'SESSION'
-#!/bin/sh
-printf '%s\n' "$DISPLAY" > "$HOME/.e2e-rdp-display"
-exec xterm -title "RemoteX RDP fixture"
-SESSION
-
 /usr/sbin/sshd -D -e -o PasswordAuthentication=yes &
 /usr/sbin/xrdp-sesman --nodaemon &
 /usr/sbin/xrdp --nodaemon &

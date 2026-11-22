@@ -12,6 +12,7 @@ import { SessionViewport } from "@/components/session"
 import { SessionTabs } from "@/components/session-tabs"
 import { Button } from "@/components/ui/button"
 import { api, completeOIDC, expireSession, sessionExpiredEvent, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
+import { getAudioContextConstructor } from "@/lib/guacamole-audio"
 import type { ClipboardDirection } from "@/lib/guacamole-session"
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage"
 import { usePreferences } from "@/lib/preferences"
@@ -290,8 +291,8 @@ export default function App() {
               connecting={activeConnecting}
               fullscreen={fullscreen}
               audioEnabled={Boolean(activeAsset && session.audioEnabledIDs.has(activeAsset.id))}
-              showAudio={activeAsset?.protocol === "rdp" && session.audioSupportedIDs.has(activeAsset.id)}
-              onToggleAudio={() => activeAsset && session.toggleAudio(activeAsset)}
+              showAudio={activeAsset?.protocol === "rdp" && Boolean(getAudioContextConstructor())}
+              onToggleAudio={() => activeAsset && session.toggleAudio(activeAsset.id)}
               onClipboard={() => {
                 setClipboardOpen(true)
                 if (activeAsset) void session.syncClipboard(activeAsset.id)
@@ -332,7 +333,7 @@ export default function App() {
                     onSessionEnded={(message) => session.ended(id, message)}
                     onReady={() => session.ready(id)}
                     onActivity={() => session.activity(id)}
-                    onAudioCapability={(supported) => session.setAudioSupported(id, supported)}
+                    onAudioChanged={(enabled) => session.setAudioEnabled(id, enabled)}
                     onClipboard={(direction, succeeded, text) => showClipboardToast(id, direction, succeeded, text)}
                   />
                 </div>

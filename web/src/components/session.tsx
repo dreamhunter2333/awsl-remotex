@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 export interface SessionHandle {
   captureKeys: (onComplete: (keys: readonly number[]) => void) => (() => void) | undefined
   disconnect: () => Promise<void>
-  setAudioEnabled: (enabled: boolean) => void
+  toggleAudio: () => void
   sendClipboard: (text: string) => boolean
   showKeyboard: () => boolean
   sendKeys: (keys: readonly number[]) => boolean
@@ -29,7 +29,7 @@ interface SessionViewportProps {
   onSessionEnded: (message: string) => void
   onReady: () => void
   onActivity: () => void
-  onAudioCapability: (supported: boolean) => void
+  onAudioChanged: (enabled: boolean) => void
   onClipboard: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
 }
 
@@ -58,7 +58,7 @@ export function SessionViewport({
   onSessionEnded,
   onReady,
   onActivity,
-  onAudioCapability,
+  onAudioChanged,
   onClipboard,
 }: SessionViewportProps) {
   const { t } = usePreferences()
@@ -70,7 +70,7 @@ export function SessionViewport({
   const controllerRef = useRef<GuacamoleSession>(null)
   const vncSettingsRef = useRef(asset.settings?.vnc)
   const notifyResizeRef = useRef<() => void>(null)
-  const bindings = { active, asset, onSessionEnded, onReady, onActivity, onAudioCapability, onClipboard, t }
+  const bindings = { active, asset, onSessionEnded, onReady, onActivity, onAudioChanged, onClipboard, t }
   const current = useRef(bindings)
 
   useLayoutEffect(() => {
@@ -80,7 +80,7 @@ export function SessionViewport({
   useImperativeHandle(ref, () => ({
     captureKeys: (onComplete) => controllerRef.current?.captureKeys(onComplete),
     disconnect: () => controllerRef.current?.disconnect() ?? Promise.resolve(),
-    setAudioEnabled: (enabled) => controllerRef.current?.setAudioEnabled(enabled),
+    toggleAudio: () => controllerRef.current?.toggleAudio(),
     sendClipboard: (text) => controllerRef.current?.setClipboard(text) ?? false,
     showKeyboard: () => controllerRef.current?.focus() ?? false,
     sendKeys: (keys) => controllerRef.current?.sendKeys(keys) ?? false,
@@ -112,7 +112,7 @@ export function SessionViewport({
       isRemoteCursor: () => vncSettingsRef.current?.cursor === "remote",
       isWheelReversed: () => vncSettingsRef.current?.wheelDirection === "reverse",
       onActivity: () => current.current.onActivity(),
-      onAudioCapability: (supported) => current.current.onAudioCapability(supported),
+      onAudioChanged: (enabled) => current.current.onAudioChanged(enabled),
       onClipboard: (direction, succeeded, text) => current.current.onClipboard(direction, succeeded, text),
       onDisplayResize: notifyResize,
       onEnded: (failure) => {
@@ -149,7 +149,7 @@ export function SessionViewport({
       void controller?.disconnect()
       return
     }
-    void controller.connect(asset.name, connectionURL)
+    void controller.connect(asset.name, connectionURL, asset.protocol === "rdp")
     return () => { void controller.disconnect() }
   }, [connectionURL])
 

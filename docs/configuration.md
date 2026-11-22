@@ -83,6 +83,7 @@ See [Operations](operations.md) for safe backup and restore procedures.
 
 - Language, theme, sidebar state, open tabs, activity timestamps, and custom key combinations are stored in browser local storage.
 - The soft-keyboard button is visible on detected touch devices. The send-keys menu is available on desktop and touch devices.
+- RDP sessions start muted. Use the Audio button in the session toolbar when the remote desktop supports audio redirection. Muting stops playback immediately, and reconnecting starts muted again.
 - Custom key combinations can be recorded from the active session, entered by name (`Ctrl+Shift+T`, `CapsLock`), or entered as raw X11 keysyms (`Ctrl+0x1008FF13`). The menu separately lists common special keys.
 - While an active session is connected, the Guacamole keyboard listens at document level and routes capturable page keyboard input to that session. Opening a modal dialog suspends remote keyboard capture so its form controls receive input locally. Mouse clicks on surrounding controls keep their normal behavior.
 - Browser- and operating-system-reserved shortcuts may not be recordable from the physical keyboard. Add those combinations by name or raw keysym and send them from the menu instead.
@@ -92,6 +93,7 @@ See [Operations](operations.md) for safe backup and restore procedures.
 
 - 语言、主题、侧边栏、已打开 Tab、活动时间和自定义快捷键保存在浏览器本地存储中。
 - 软键盘按钮在检测到触屏设备时显示；发送按键菜单在桌面端和触屏端均可用。
+- RDP 会话默认静音。远端支持声音重定向时，可通过会话工具栏的声音按钮开启播放。关闭会立即静音，重连后恢复静音。
 - 自定义快捷键可以从活动会话直接录制，也可输入名称（`Ctrl+Shift+T`、`CapsLock`）或原始 X11 keysym（`Ctrl+0x1008FF13`）；菜单会单独列出常用特殊键。
 - 活动会话连接后，Guacamole 在文档级监听键盘，并将网页能捕获的输入路由到该会话；打开模态弹窗会暂停远程键盘捕获，使表单控件在本地接收输入。其他控件的鼠标点击行为不变。
 - 浏览器或操作系统保留的快捷键可能无法从物理键盘录制；可改用按键名称或原始 keysym 添加，再从菜单发送。

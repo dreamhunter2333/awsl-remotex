@@ -44,16 +44,16 @@ it("preserves a live connection on rename and uses the new name only with a fres
   const props = {
     active: true, connecting: false, asset, connectionURL: "old-ticket",
     onReconnect: vi.fn(), onSessionEnded: vi.fn(), onReady: vi.fn(), onActivity: vi.fn(),
-    onAudioCapability: vi.fn(), onClipboard: vi.fn(),
+    onAudioChanged: vi.fn(), onClipboard: vi.fn(),
   }
   await act(async () => root.render(<SessionViewport {...props} />))
-  expect(connect).toHaveBeenCalledWith("Before", "old-ticket")
+  expect(connect).toHaveBeenCalledWith("Before", "old-ticket", false)
   const renamed = { ...asset, name: "After" }
   await act(async () => root.render(<SessionViewport {...props} asset={renamed} />))
   expect(connect).toHaveBeenCalledTimes(1)
   expect(disconnect).not.toHaveBeenCalled()
   await act(async () => root.render(<SessionViewport {...props} asset={renamed} connectionURL="fresh-ticket" />))
   expect(connect).toHaveBeenCalledTimes(2)
-  expect(connect).toHaveBeenLastCalledWith("After", "fresh-ticket")
+  expect(connect).toHaveBeenLastCalledWith("After", "fresh-ticket", false)
   expect(disconnect).toHaveBeenCalledTimes(1)
 })

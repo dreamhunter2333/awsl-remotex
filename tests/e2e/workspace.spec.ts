@@ -375,3 +375,78 @@ test("VNC and RDP tabs keep their sessions when switching or closing a tab", asy
     for (const id of ids) await request.delete(`/api/assets/${id}`, { headers })
   }
 })
+
+test("RDP audio is muted by default, plays on click, and mutes on reconnect", async ({ page, request }) => {
+  const headers = await apiSession(request)
+  const asset = fixtureAsset("rdp")
+  const id = await createAsset(request, headers, asset)
+  const tunnels = watchTunnels(page)
+  let audioStreams = 0
+  page.on("websocket", (socket) => {
+    socket.on("framereceived", ({ payload }) => {
+      if (payload.toString().includes("5.audio,")) audioStreams++
+    })
+  })
+  await page.addInitScript(() => {
+    const counters = { created: 0, played: 0, closed: 0 }
+    Object.defineProperty(window, "__audioCounters", { value: counters })
+    window.AudioContext = new Proxy(window.AudioContext, {
+      construct(target, args) {
+        counters.created++
+        return Reflect.construct(target, args)
+      },
+    })
+    const start = AudioBufferSourceNode.prototype.start
+    AudioBufferSourceNode.prototype.start = function (this: AudioBufferSourceNode, ...args: Parameters<AudioBufferSourceNode["start"]>) {
+      start.apply(this, args)
+      if (this.buffer?.getChannelData(0).some((sample) => Math.abs(sample) > 0.01)) counters.played++
+    }
+    const close = AudioContext.prototype.close
+    AudioContext.prototype.close = function (this: AudioContext) {
+      counters.closed++
+      return close.call(this)
+    }
+  })
+  const counters = () => page.evaluate(() => (window as Window & {
+    __audioCounters: { created: number; played: number; closed: number }
+  }).__audioCounters)
+  const playTone = async () => {
+    const response = await request.post(`${desktop}/rdp/audio`)
+    expect(response.status(), await response.text()).toBe(204)
+  }
+
+  try {
+    await signIn(page)
+    await assetButton(page, asset.name).dblclick()
+    await expectConnected(page, asset.name)
+    const sound = page.getByRole("button", { name: "Audio", exact: true })
+    await expect(sound).toHaveAttribute("aria-pressed", "false")
+    await expect.poll(async () => (await request.post(`${desktop}/rdp/audio`)).status()).toBe(204)
+    await expect.poll(() => audioStreams).toBeGreaterThan(0)
+    expect(await counters()).toEqual({ created: 0, played: 0, closed: 0 })
+
+    await sound.click()
+    await expect(sound).toHaveAttribute("aria-pressed", "true")
+    await playTone()
+    await expect.poll(async () => (await counters()).played).toBeGreaterThan(0)
+    await sound.click()
+    await expect(sound).toHaveAttribute("aria-pressed", "false")
+    const muted = await counters()
+    expect(muted).toMatchObject({ created: 1, closed: 1 })
+    await playTone()
+    expect(await counters()).toEqual(muted)
+
+    await page.setViewportSize({ width: 480, height: 720 })
+    await expect(sound).toBeVisible()
+    await sound.click()
+    await expect(sound).toHaveAttribute("aria-pressed", "true")
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.getByRole("button", { name: "Reconnect" }).click()
+    await expect.poll(tunnels.opened).toBe(2)
+    await expectConnected(page, asset.name)
+    await expect(sound).toHaveAttribute("aria-pressed", "false")
+    expect(await counters()).toMatchObject({ created: 2, closed: 2 })
+  } finally {
+    await request.delete(`/api/assets/${id}`, { headers })
+  }
+})
