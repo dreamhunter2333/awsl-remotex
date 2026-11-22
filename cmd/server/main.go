@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dreamhunter2333/awsl-remotex/internal/assets"
+	"github.com/dreamhunter2333/awsl-remotex/internal/auth"
 	"github.com/dreamhunter2333/awsl-remotex/internal/config"
 	"github.com/dreamhunter2333/awsl-remotex/internal/credential"
 	"github.com/dreamhunter2333/awsl-remotex/internal/database"
@@ -27,6 +28,17 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 10*time.Second)
+	oidcClient, err := auth.NewOIDC(discoveryCtx, auth.OIDCConfig{
+		Issuer: settings.OIDCIssuer, ClientID: settings.OIDCClientID,
+		ClientSecret: settings.OIDCClientSecret, RedirectURL: settings.OIDCRedirectURL,
+	})
+	cancelDiscovery()
+	if err != nil {
+		logger.Error("configure OIDC", "error", err)
+		os.Exit(1)
+	}
 
 	var vault *credential.Vault
 	if secret := settings.CredentialKey; secret != "" {
@@ -61,6 +73,7 @@ func main() {
 		GuacdTester:        guacdTester,
 		AuthUsername:       settings.AuthUsername,
 		AuthPassword:       settings.AuthPassword,
+		OIDC:               oidcClient,
 		SessionIdleTimeout: settings.SessionIdleTimeout,
 	})
 	if err != nil {

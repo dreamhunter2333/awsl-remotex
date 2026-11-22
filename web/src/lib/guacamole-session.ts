@@ -1,5 +1,6 @@
 import type { Client, Event as GuacamoleEvent, Mouse, Status } from "guacamole-common-js"
 
+import { api, fetchWithSession } from "./api"
 import { sendKeyCombination, type KeyEventSender } from "./guacamole-keys"
 import { GuacamoleAudioPlayer } from "./guacamole-audio"
 import { GuacamoleSDKError, loadGuacamoleSDK, type GuacamoleSDK } from "./guacamole-sdk"
@@ -26,7 +27,7 @@ export function readGuacamoleTicket(connectionURL: string) {
 }
 
 export async function authenticateGuacamole(ticket: string, signal: AbortSignal): Promise<GuacamoleAuthResponse> {
-  const response = await fetch("/guacamole/api/tokens", {
+  const response = await fetchWithSession("/guacamole/api/tokens", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ data: ticket }),
@@ -50,6 +51,7 @@ export function buildGuacamoleConnectData(options: {
   connectionID: string
   authToken: string
   dataSource: string
+  tunnelTicket?: string
   width: number
   height: number
   dpi: number
@@ -66,6 +68,7 @@ export function buildGuacamoleConnectData(options: {
     GUAC_DPI: String(options.dpi),
     GUAC_TIMEZONE: Intl.DateTimeFormat().resolvedOptions().timeZone,
   })
+  if (options.tunnelTicket) parameters.set("remotex_ticket", options.tunnelTicket)
   for (const mimetype of options.audio) parameters.append("GUAC_AUDIO", mimetype)
   for (const mimetype of options.video) parameters.append("GUAC_VIDEO", mimetype)
   for (const mimetype of ["image/webp", "image/png", "image/jpeg"]) parameters.append("GUAC_IMAGE", mimetype)
@@ -75,7 +78,7 @@ export function buildGuacamoleConnectData(options: {
 export function revokeGuacamoleSession(token: string) {
   if (!token) return Promise.resolve()
   const encoded = encodeURIComponent(token)
-  return fetch(`/guacamole/api/session?token=${encoded}`, {
+  return fetchWithSession(`/guacamole/api/session?token=${encoded}`, {
     method: "DELETE",
     headers: { "Guacamole-Token": token },
     keepalive: true,
@@ -316,8 +319,10 @@ export class GuacamoleSession implements KeyEventSender {
       }
 
       this.token = auth.authToken
+      const tunnelTicket = await api.tunnelTicket(this.abortController.signal)
+      if (generation !== this.generation) return
       this.ensureKeyboard()
-      this.createClient(connectionID, auth)
+      this.createClient(connectionID, auth, tunnelTicket)
     } catch (reason) {
       if (generation !== this.generation || this.abortController?.signal.aborted) return
       this.finish(classifyGuacamoleFailure(reason))
@@ -451,7 +456,7 @@ export class GuacamoleSession implements KeyEventSender {
     })
   }
 
-  private createClient(connectionID: string, auth: GuacamoleAuthResponse) {
+  private createClient(connectionID: string, auth: GuacamoleAuthResponse, tunnelTicket?: string) {
     if (!this.sdk) return
     const sdk = this.sdk
     const tunnel = new sdk.WebSocketTunnel("/guacamole/websocket-tunnel")
@@ -545,6 +550,7 @@ export class GuacamoleSession implements KeyEventSender {
     const ratio = (this.dependencies.pixelRatio ?? (() => window.devicePixelRatio || 1))()
     client.connect(buildGuacamoleConnectData({
       connectionID,
+      tunnelTicket,
       authToken: auth.authToken,
       dataSource: auth.dataSource,
       width: Math.max(1, Math.floor(this.displayHost.clientWidth * ratio)),

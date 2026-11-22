@@ -32,6 +32,10 @@ services:
     environment:
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
       GUACAMOLE_UPSTREAM: http://guacamole:8080
@@ -74,7 +78,7 @@ GUACAMOLE_JSON_SECRET=replace-with-32-random-hex-characters
 CREDENTIAL_KEY=replace-with-64-random-hex-characters
 ```
 
-Generate the two random values with `openssl rand -hex 16` and `openssl rand -hex 32`, respectively, and replace the example login password. An empty `AUTH_PASSWORD` disables application authentication and is suitable only for an intentionally trusted network.
+Generate the two random values with `openssl rand -hex 16` and `openssl rand -hex 32`, respectively. Replace the example login password or configure [Tinyauth via OIDC](docs/deployment.md#tinyauth-openid-connect). Skipping both disables application authentication.
 
 For a new installation, initialize the empty data directory before starting. The application runs as the non-root `awsl` user; the one-off command below grants it access to the mounted directory using the image's own user and group:
 

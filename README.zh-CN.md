@@ -32,6 +32,10 @@ services:
     environment:
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET}
       GUACAMOLE_UPSTREAM: http://guacamole:8080
@@ -74,7 +78,7 @@ GUACAMOLE_JSON_SECRET=replace-with-32-random-hex-characters
 CREDENTIAL_KEY=replace-with-64-random-hex-characters
 ```
 
-两个随机值可分别通过 `openssl rand -hex 16` 和 `openssl rand -hex 32` 生成，并替换示例登录密码。`AUTH_PASSWORD` 留空会关闭应用认证，只适用于明确可信的网络。
+两个随机值可分别通过 `openssl rand -hex 16` 和 `openssl rand -hex 32` 生成。请替换示例登录密码或[通过 OIDC 接入 Tinyauth](docs/deployment.md#tinyauth-openid-connect)。两者均未配置时，应用认证会关闭。
 
 首次部署时，先初始化空的数据目录。应用以非 root 用户 `awsl` 运行；下面的一次性命令使用镜像内的用户和组为挂载目录设置权限，然后启动并检查状态：
 

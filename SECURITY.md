@@ -12,7 +12,7 @@ Use the repository's private [GitHub security advisory form](https://github.com/
 
 ## Deployment expectations
 
-- Set a strong `AUTH_PASSWORD`; leaving it empty disables application authentication.
+- Set a strong `AUTH_PASSWORD` or configure OIDC. Leaving both unconfigured disables application authentication.
 - Use HTTPS outside an intentionally trusted network.
 - Keep `.env`, `CREDENTIAL_KEY`, backups, and the SQLite data directory secret.
 - Restrict network access to Guacamole and `guacd`; expose only the Awsl RemoteX HTTP service through the reverse proxy.
@@ -22,4 +22,4 @@ Use the repository's private [GitHub security advisory form](https://github.com/
 
 安全修复仅面向最新版本。疑似漏洞请通过仓库的 GitHub 私有安全公告入口报告，不要在公开 Issue 中提交密码、私钥、票据、Cookie、内网地址或数据库内容。
 
-生产环境应设置高强度 `AUTH_PASSWORD`、启用 HTTPS、妥善保护 `.env`、`CREDENTIAL_KEY`、备份和 SQLite 数据目录，并只通过 Awsl RemoteX 暴露 Guacamole 流量。
+生产环境应设置高强度 `AUTH_PASSWORD` 或配置 OIDC，启用 HTTPS，妥善保护 `.env`、`CREDENTIAL_KEY`、备份和 SQLite 数据目录，并只通过 Awsl RemoteX 暴露 Guacamole 流量。

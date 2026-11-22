@@ -30,7 +30,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-describe("logout lifecycle", () => {
+describe("workspace", () => {
   let root: Root
   let host: HTMLDivElement
 
@@ -67,6 +67,54 @@ describe("logout lifecycle", () => {
 
   const open = (button: HTMLButtonElement) => button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }))
   const assetButtons = () => [...document.querySelectorAll<HTMLButtonElement>('aside button[title="doubleClickConnect"]')]
+
+  it("keeps both sidebar toggles in sync when no session is open", async () => {
+    const emptyStateButton = host.querySelector<HTMLButtonElement>('main button[aria-controls="asset-sidebar"]')!
+    const headerButton = host.querySelector<HTMLButtonElement>('header button[aria-controls="asset-sidebar"]')!
+    expect(emptyStateButton.textContent).toBe("collapseSidebar")
+    await act(async () => emptyStateButton.click())
+    expect(emptyStateButton.textContent).toBe("expandSidebar")
+    expect(headerButton.getAttribute("aria-expanded")).toBe("false")
+    await act(async () => emptyStateButton.click())
+    expect(emptyStateButton.textContent).toBe("collapseSidebar")
+    expect(headerButton.getAttribute("aria-expanded")).toBe("true")
+    await act(async () => headerButton.click())
+    expect(emptyStateButton.textContent).toBe("expandSidebar")
+  })
+
+  it("returns to sign-in when a protected request rejects the current JWT", async () => {
+    vi.mocked(api.connectAsset).mockRestore()
+    sessionStorage.setItem("awsl-remotex.jwt", "expired-jwt")
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json(
+      { error: "authentication required" },
+      { status: 401, headers: { "WWW-Authenticate": "Bearer" } },
+    ))
+    vi.stubGlobal("fetch", fetch)
+
+    await act(async () => open(assetButtons()[0]))
+    expect(host.querySelector('input[type="password"]')).not.toBeNull()
+    expect(host.querySelector("aside")).toBeNull()
+    expect(sessionStorage.getItem("awsl-remotex.jwt")).toBeNull()
+  })
+
+  it("closes active connections when the login timer expires", async () => {
+    vi.useFakeTimers()
+    try {
+      await act(async () => root.unmount())
+      vi.mocked(api.authStatus).mockResolvedValueOnce({
+        required: true, authenticated: true, sessionIdleSeconds: 86_400, sessionExpiresInMs: 100,
+      })
+      root = createRoot(host)
+      await act(async () => root.render(<App />))
+      await act(async () => open(assetButtons()[0]))
+      await act(async () => vi.advanceTimersByTimeAsync(100))
+
+      expect(disconnect).toHaveBeenCalled()
+      expect(host.querySelector('input[type="password"]')).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
   it("blocks new connections through disconnect and logout, then signs in with no retained sessions", async () => {
     const closing = deferred<void>()

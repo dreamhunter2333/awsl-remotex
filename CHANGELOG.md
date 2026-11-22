@@ -2,6 +2,12 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.28 - 2026-11-23
+
+- Replaced application session cookies with signed Bearer JWTs and one-time WebSocket tickets. Sessions expire after eight hours and close their remote connections on expiry or logout. Sign in again after upgrading.
+- Added OpenID Connect sign-in, including support for Tinyauth.
+- Made the empty workspace button expand and collapse the asset sidebar.
+
 ## v0.2.27 - 2026-10-12
 
 - Added an iOS/iPadOS standalone-PWA workaround for the system-level top blur, following the selected theme without changing layout or intercepting input.

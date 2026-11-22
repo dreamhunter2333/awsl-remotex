@@ -11,6 +11,10 @@ services:
     environment:
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URL: ${OIDC_REDIRECT_URL:-}
       CREDENTIAL_KEY: ${CREDENTIAL_KEY:?set CREDENTIAL_KEY to 64 hexadecimal characters}
       GUACAMOLE_JSON_SECRET: ${GUACAMOLE_JSON_SECRET:?set GUACAMOLE_JSON_SECRET to 32 hexadecimal characters}
       GUACAMOLE_UPSTREAM: http://guacamole:8080

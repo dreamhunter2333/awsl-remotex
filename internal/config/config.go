@@ -12,6 +12,10 @@ type Config struct {
 	WebDirectory        string
 	AuthUsername        string
 	AuthPassword        string
+	OIDCIssuer          string
+	OIDCClientID        string
+	OIDCClientSecret    string
+	OIDCRedirectURL     string
 	CredentialKey       string
 	GuacamoleJSONSecret string
 	GuacamoleUpstream   string
@@ -31,6 +35,10 @@ func Load() (Config, error) {
 		WebDirectory:        value("WEB_DIR", "web/dist"),
 		AuthUsername:        value("AUTH_USERNAME", "admin"),
 		AuthPassword:        os.Getenv("AUTH_PASSWORD"),
+		OIDCIssuer:          os.Getenv("OIDC_ISSUER"),
+		OIDCClientID:        os.Getenv("OIDC_CLIENT_ID"),
+		OIDCClientSecret:    os.Getenv("OIDC_CLIENT_SECRET"),
+		OIDCRedirectURL:     os.Getenv("OIDC_REDIRECT_URL"),
 		CredentialKey:       os.Getenv("CREDENTIAL_KEY"),
 		GuacamoleJSONSecret: os.Getenv("GUACAMOLE_JSON_SECRET"),
 		GuacamoleUpstream:   os.Getenv("GUACAMOLE_UPSTREAM"),

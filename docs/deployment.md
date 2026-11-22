@@ -18,9 +18,9 @@ openssl rand -hex 32
 - `AUTH_PASSWORD`: a separate strong application login password / 独立的高强度应用登录密码。
 - `AUTH_USERNAME`: defaults to `admin` / 默认登录账号为 `admin`。
 
-`GUACAMOLE_JSON_SECRET` must be identical in RemoteX and Guacamole. Preserve `CREDENTIAL_KEY` for the lifetime of the SQLite database; changing it makes saved credentials unreadable. An empty `AUTH_PASSWORD` disables login and is suitable only for an intentionally trusted network.
+`GUACAMOLE_JSON_SECRET` must be identical in RemoteX and Guacamole. Preserve `CREDENTIAL_KEY` for the lifetime of the SQLite database. Leaving both `AUTH_PASSWORD` and the OIDC settings empty disables RemoteX authentication.
 
-RemoteX 与 Guacamole 使用的 `GUACAMOLE_JSON_SECRET` 必须一致。只要继续使用原 SQLite 数据库，就必须保留原 `CREDENTIAL_KEY`；修改后已有凭据无法解密。`AUTH_PASSWORD` 留空会关闭应用登录，只适用于明确可信的网络。
+RemoteX 与 Guacamole 使用的 `GUACAMOLE_JSON_SECRET` 必须一致。继续使用原 SQLite 数据库时必须保留原 `CREDENTIAL_KEY`。同时留空 `AUTH_PASSWORD` 和 OIDC 配置会关闭 RemoteX 应用认证。
 
 Helm can generate and retain these values in a Kubernetes Secret. The examples still set an explicit login password so the installation never starts with an unknown application password. Helm 可以生成并复用这些 Secret；示例仍显式设置登录密码。
 
@@ -200,7 +200,7 @@ Forward the complete origin to RemoteX, including:
 - static application files;
 - WebSocket upgrade requests.
 
-Do not strip or rewrite `/guacamole`. Preserve `Host`, and set `X-Forwarded-Proto: https` when TLS terminates at the proxy. 不要删除或重写 `/guacamole`；保留 `Host`，并在前置代理终结 TLS 时设置 `X-Forwarded-Proto: https`。剪贴板、安全 Cookie 与 PWA 应通过 HTTPS 使用。
+Preserve `Host`, `Authorization`, and the `/guacamole` path. Use HTTPS for Bearer tokens, the clipboard, and the PWA. 保留 `Host`、`Authorization` 和 `/guacamole` 路径。Bearer 令牌、剪贴板和 PWA 应通过 HTTPS 使用。
 
 If Cloudflare Tunnel runs in the same Kubernetes cluster, target the Service DNS name:
 
@@ -209,6 +209,23 @@ http://awsl-remotex.default:80
 ```
 
 If the tunnel runs in a different namespace, use the full name `http://awsl-remotex.default.svc.cluster.local:80`.
+
+### Tinyauth (OpenID Connect)
+
+Register a confidential client in [Tinyauth](https://tinyauth.app/docs/guides/oidc/) and allow the exact callback URL below. Add these variables to the RemoteX service environment. The repository's Compose file reads them from `.env`.
+
+在 Tinyauth 中创建一个有客户端密钥的 OIDC 客户端，登记下方的完整回调地址。将这四项传入 RemoteX 服务环境。仓库自带的 Compose 可直接从 `.env` 读取。
+
+```dotenv
+OIDC_ISSUER=https://auth.example.com
+OIDC_CLIENT_ID=remotex
+OIDC_CLIENT_SECRET=replace-with-the-oidc-client-secret
+OIDC_REDIRECT_URL=https://remotex.example.com/auth/callback
+```
+
+Use the browser's RemoteX sign-in button to start OIDC. RemoteX verifies the provider's ID token and issues its own Bearer JWT. OIDC mode uses the provider for login. Keep the RemoteX route reachable for the login screen and callback so the browser can complete the flow.
+
+用 RemoteX 的登录按钮发起 OIDC。RemoteX 验证签发方的 ID Token 后签发自己的 Bearer JWT。OIDC 模式的登录由签发方处理，浏览器需要能直接访问 RemoteX 的登录页和回调。
 
 ## Health checks / 健康检查
 

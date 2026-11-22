@@ -12,7 +12,11 @@
 | `DATABASE_PATH` | `data/awsl-remotex.db` | SQLite file path / SQLite 文件路径 |
 | `WEB_DIR` | `web/dist` | Built frontend directory / 前端构建目录 |
 | `AUTH_USERNAME` | `admin` | Login username when authentication is enabled / 启用认证后的登录用户名 |
-| `AUTH_PASSWORD` | empty | Empty disables application authentication / 留空会禁用应用认证 |
+| `AUTH_PASSWORD` | empty | Password login when OIDC is not configured / 未配置 OIDC 时用于密码登录 |
+| `OIDC_ISSUER` | empty | HTTPS issuer URL, for example `https://auth.example.com` / OIDC 签发方 HTTPS 地址 |
+| `OIDC_CLIENT_ID` | empty | Registered OIDC client ID / 已注册的 OIDC 客户端 ID |
+| `OIDC_CLIENT_SECRET` | empty | Registered OIDC client secret / 已注册的 OIDC 客户端密钥 |
+| `OIDC_REDIRECT_URL` | empty | Public HTTPS URL ending in `/auth/callback` / 以 `/auth/callback` 结尾的公开 HTTPS 地址 |
 | `CREDENTIAL_KEY` | empty | Required to save or decrypt credentials; exactly 64 hexadecimal characters / 保存或解密凭据必需，必须是 64 个十六进制字符 |
 | `GUACAMOLE_JSON_SECRET` | empty | Required for remote sessions; exactly 32 hexadecimal characters and must equal Guacamole `JSON_SECRET_KEY` / 远程会话必需，必须是 32 个十六进制字符并与 Guacamole 一致 |
 | `GUACAMOLE_UPSTREAM` | empty | Required for the Guacamole proxy, readiness, and remote sessions; Compose uses `http://guacamole:8080` / Guacamole 代理、就绪检查和远程会话必需；Compose 使用 `http://guacamole:8080` |
@@ -30,6 +34,8 @@ openssl rand -hex 32
 Use the 32-character output for `GUACAMOLE_JSON_SECRET` and the 64-character output for `CREDENTIAL_KEY`. Do not reuse either as `AUTH_PASSWORD`.
 
 分别将 32 字符输出用于 `GUACAMOLE_JSON_SECRET`，64 字符输出用于 `CREDENTIAL_KEY`，不要复用为 `AUTH_PASSWORD`。
+
+If all OIDC settings and `AUTH_PASSWORD` are empty, application authentication is disabled. 仅当 OIDC 配置和 `AUTH_PASSWORD` 均留空时，应用认证才会关闭。
 
 ## Compose values / Compose 参数
 

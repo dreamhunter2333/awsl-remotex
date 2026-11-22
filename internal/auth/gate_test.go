@@ -1,86 +1,133 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
-func TestLoginRequiresUsernameAndPassword(t *testing.T) {
-	gate := New("operator", "secret")
-
-	for _, credentials := range [][2]string{{"operator", "wrong"}, {"wrong", "secret"}} {
-		response := httptest.NewRecorder()
-		if gate.Login(response, httptest.NewRequest("POST", "/", nil), credentials[0], credentials[1]) {
-			t.Fatalf("accepted credentials %q", credentials)
-		}
+func TestJWTAuthentication(t *testing.T) {
+	gate := New("", "secret", false)
+	if !gate.CheckPassword("admin", "secret") || gate.CheckPassword("admin", "wrong") || gate.CheckPassword("other", "secret") {
+		t.Fatal("unexpected password validation")
 	}
-
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest("POST", "/", nil)
-	if !gate.Login(response, request, "operator", "secret") {
-		t.Fatal("rejected valid credentials")
+	token, err := gate.IssueSession("admin")
+	if err != nil {
+		t.Fatal(err)
 	}
-	cookies := response.Result().Cookies()
-	if len(cookies) != 1 {
-		t.Fatalf("got %d cookies, want 1", len(cookies))
+	request := httptest.NewRequest(http.MethodGet, "/api/assets", nil)
+	request.AddCookie(&http.Cookie{Name: "awsl_remotex_session", Value: token})
+	request.Header.Set("Remote-User", "admin")
+	if gate.Authenticated(request) {
+		t.Fatal("accepted a cookie or bare username")
 	}
-	request.AddCookie(cookies[0])
+	request.Header.Set("Authorization", "Bearer "+token)
 	if !gate.Authenticated(request) {
-		t.Fatal("session cookie was not authenticated")
+		t.Fatal("rejected signed JWT")
+	}
+	if New("", "secret", false).Authenticated(request) {
+		t.Fatal("accepted a JWT from another process")
+	}
+	parts := strings.Split(token, ".")
+	request.Header.Set("Authorization", "Bearer "+strings.Join([]string{parts[0], parts[1], "invalid"}, "."))
+	if gate.Authenticated(request) {
+		t.Fatal("accepted an invalid signature")
+	}
+	expired, err := gate.sign("admin", apiAudience, "", time.Now().Add(-time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+expired)
+	if gate.Authenticated(request) {
+		t.Fatal("accepted an expired JWT")
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	gate.Logout(request)
+	if gate.Authenticated(request) {
+		t.Fatal("accepted a revoked JWT")
 	}
 }
 
-func TestSessionRevocationAndExpiry(t *testing.T) {
-	gate := New("operator", "secret")
-	login := func() *http.Request {
-		t.Helper()
-		response := httptest.NewRecorder()
-		if !gate.Login(response, httptest.NewRequest("POST", "/", nil), "operator", "secret") {
-			t.Fatal("login failed")
+func TestTunnelJWTIsScopedAndSingleUse(t *testing.T) {
+	gate := New("operator", "secret", false)
+	session, err := gate.IssueSession("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/tunnel", nil)
+	request.Header.Set("Authorization", "Bearer "+session)
+	ticket, err := gate.IssueTunnel(request)
+	if err != nil || ticket == "" {
+		t.Fatalf("failed to issue tunnel ticket: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+ticket)
+	if ctx, _ := gate.ConsumeTunnel(t.Context(), session); gate.Authenticated(request) || ctx != nil {
+		t.Fatal("accepted a JWT with the wrong audience")
+	}
+	tunnel, cancel := gate.ConsumeTunnel(t.Context(), ticket)
+	if tunnel == nil {
+		t.Fatal("rejected an unused tunnel JWT")
+	}
+	defer cancel()
+	if ctx, _ := gate.ConsumeTunnel(t.Context(), ticket); ctx != nil {
+		t.Fatal("accepted a used tunnel JWT")
+	}
+	request.Header.Set("Authorization", "Bearer "+session)
+	ticket, err = gate.IssueTunnel(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate.Logout(request)
+	if ctx, _ := gate.ConsumeTunnel(t.Context(), ticket); ctx != nil {
+		t.Fatal("accepted a tunnel JWT from a revoked session")
+	}
+	select {
+	case <-tunnel.Done():
+	case <-time.After(time.Second):
+		t.Fatal("logout did not close the active tunnel")
+	}
+}
+
+func TestTunnelExpiresWithParentSession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gate := New("operator", "secret", false)
+		bearer, err := gate.sign("operator", apiAudience, "", time.Now().Add(2*time.Minute))
+		if err != nil {
+			t.Fatal(err)
 		}
-		request := httptest.NewRequest("GET", "/", nil)
-		request.AddCookie(response.Result().Cookies()[0])
-		return request
-	}
-	first, second := login(), login()
-	firstCookie, _ := first.Cookie(cookieName)
-	secondCookie, _ := second.Cookie(cookieName)
-	if firstCookie.Value == secondCookie.Value {
-		t.Fatal("independent logins reused the same token")
-	}
-	gate.Logout(httptest.NewRecorder(), first)
-	if gate.Authenticated(first) {
-		t.Fatal("revoked cookie was accepted")
-	}
-	if !gate.Authenticated(second) {
-		t.Fatal("logout revoked another session")
-	}
-	if New("operator", "secret").Authenticated(second) {
-		t.Fatal("new server accepted an old session")
-	}
-	gate.sessions[secondCookie.Value] = time.Now().Add(-time.Second)
-	if gate.Authenticated(second) {
-		t.Fatal("expired cookie was accepted")
-	}
-	if len(gate.sessions) != 0 {
-		t.Fatal("expired session was not removed")
-	}
+		request := httptest.NewRequest(http.MethodPost, "/api/auth/tunnel", nil)
+		request.Header.Set("Authorization", "Bearer "+bearer)
+		ticket, err := gate.IssueTunnel(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tunnel, cancel := gate.ConsumeTunnel(context.Background(), ticket)
+		if tunnel == nil {
+			t.Fatal("could not start tunnel")
+		}
+		defer cancel()
+		time.Sleep(tunnelLifetime)
+		if tunnel.Err() != nil {
+			t.Fatal("handshake ticket expiry closed the active tunnel")
+		}
+		time.Sleep(2*time.Minute - tunnelLifetime)
+		synctest.Wait()
+		if tunnel.Err() == nil {
+			t.Fatal("session expiry did not close the active tunnel")
+		}
+	})
 }
 
-func TestDefaultUsernameAndDisabledAuthentication(t *testing.T) {
-	gate := New("", "secret")
-	if !gate.Login(httptest.NewRecorder(), httptest.NewRequest("POST", "/", nil), "admin", "secret") {
-		t.Fatal("default admin username was rejected")
+func TestAuthenticationRequiredForOIDCWithoutPassword(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	if New("", "", true).Authenticated(request) {
+		t.Fatal("OIDC must require authentication")
 	}
-
-	disabled := New("operator", "")
-	if disabled.Required() {
-		t.Fatal("authentication should be disabled without a password")
-	}
-	response := httptest.NewRecorder()
-	if !disabled.Login(response, httptest.NewRequest("POST", "/", nil), "", "") || len(disabled.sessions) != 0 || len(response.Result().Cookies()) != 0 {
-		t.Fatal("disabled authentication should not allocate sessions")
+	if !New("", "", false).Authenticated(request) {
+		t.Fatal("no credentials configured should allow requests")
 	}
 }

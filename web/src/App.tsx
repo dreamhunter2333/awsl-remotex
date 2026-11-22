@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { LogOut, PanelLeftClose, PanelLeftOpen, Plus, Search, X } from "lucide-react"
 
 import { AssetButton } from "@/components/asset-button"
@@ -10,7 +10,7 @@ import { PreferenceControls } from "@/components/preference-controls"
 import { SessionActions } from "@/components/session-actions"
 import { SessionViewport } from "@/components/session"
 import { Button } from "@/components/ui/button"
-import { api, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
+import { api, completeOIDC, expireSession, sessionExpiredEvent, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
 import { displayGroup, protocolMeta } from "@/lib/assets"
 import type { ClipboardDirection } from "@/lib/guacamole-session"
 import { usePreferences } from "@/lib/preferences"
@@ -44,10 +44,37 @@ export default function App() {
     t("connectionFailed"),
     t("sessionEnded"),
   )
+  const resetSessions = session.reset
+  const clearWorkspace = useCallback(() => {
+    setAssets([])
+    setSelectedAsset(undefined)
+    setSessionClipboards({})
+    setClipboardOpen(false)
+    setClipboardToast(undefined)
+    setDialogOpen(false)
+    setEditingAsset(undefined)
+    setAuthStatus((status) => status && { ...status, authenticated: false })
+  }, [])
 
   useEffect(() => {
-    api
-      .authStatus()
+    const onExpired = () => {
+      void resetSessions()
+      clearWorkspace()
+    }
+    window.addEventListener(sessionExpiredEvent, onExpired)
+    return () => window.removeEventListener(sessionExpiredEvent, onExpired)
+  }, [clearWorkspace, resetSessions])
+
+  useEffect(() => {
+    if (!authStatus?.authenticated || authStatus.sessionExpiresInMs === undefined) return
+    const timer = window.setTimeout(expireSession, authStatus.sessionExpiresInMs)
+    return () => window.clearTimeout(timer)
+  }, [authStatus])
+
+  useEffect(() => {
+    completeOIDC()
+      .catch(() => setError(t("oidcLoginFailed")))
+      .then(() => api.authStatus())
       .then(async (status) => {
         setAuthStatus(status)
         if (!status.authenticated) return
@@ -91,6 +118,8 @@ export default function App() {
   const activeAsset = assetsByID.get(session.activeSession ?? "")
   const activeConnected = Boolean(activeAsset && session.connectedIDs.has(activeAsset.id))
   const activeConnecting = Boolean(activeAsset && session.connectingIDs.has(activeAsset.id))
+  const sidebarAction = t(sidebarCollapsed ? "expandSidebar" : "collapseSidebar")
+  const toggleSidebar = () => setSidebarCollapsed((collapsed) => !collapsed)
 
   const closeDialog = () => {
     setDialogOpen(false)
@@ -141,12 +170,7 @@ export default function App() {
       await session.reset()
       await api.logout()
       await session.reset()
-      setAssets([])
-      setSessionClipboards({})
-      setClipboardOpen(false)
-      setClipboardToast(undefined)
-      closeDialog()
-      setAuthStatus({ required: true, authenticated: false, sessionIdleSeconds: authStatus?.sessionIdleSeconds ?? 86_400 })
+      clearWorkspace()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("connectionFailed"))
       setSidebarCollapsed(false)
@@ -179,7 +203,7 @@ export default function App() {
     return <LoadingScreen message={error || t("checkingAuthentication")} error={Boolean(error)} />
   }
   if (!authStatus.authenticated) {
-    return <LoginScreen onAuthenticated={finishLogin} />
+    return <LoginScreen onAuthenticated={finishLogin} oidc={authStatus.oidc} callbackError={error} />
   }
 
   return (
@@ -190,9 +214,11 @@ export default function App() {
           variant="ghost"
           size="icon"
           className="size-9 shrink-0 sm:size-7"
-          onClick={() => setSidebarCollapsed((value) => !value)}
-          aria-label={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
-          title={sidebarCollapsed ? t("expandSidebar") : t("collapseSidebar")}
+          onClick={toggleSidebar}
+          aria-controls="asset-sidebar"
+          aria-expanded={!sidebarCollapsed}
+          aria-label={sidebarAction}
+          title={sidebarAction}
         >
           {sidebarCollapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
         </Button>
@@ -216,7 +242,7 @@ export default function App() {
         "relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)] transition-[grid-template-columns] duration-200",
         !sidebarCollapsed && "sm:grid-cols-[260px_minmax(0,1fr)]",
       )}>
-        <aside data-local-keyboard className={cn(
+        <aside id="asset-sidebar" inert={sidebarCollapsed} data-local-keyboard className={cn(
           "absolute inset-y-0 left-0 z-30 flex w-[min(280px,85vw)] min-w-0 flex-col overflow-hidden bg-[var(--panel)] shadow-xl transition-transform duration-200 sm:static sm:w-auto sm:shadow-none",
           sidebarCollapsed ? "-translate-x-full border-r-0 sm:translate-x-0" : "translate-x-0 border-r border-[var(--border)]",
         )}>
@@ -336,9 +362,11 @@ export default function App() {
               <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
                 <p className="text-sm font-medium text-[var(--muted)]">{t("noSession")}</p>
                 <p className="max-w-sm text-xs leading-5 text-[var(--subtle)]">{t("connectHint")}</p>
-                <Button variant="outline" size="sm" onClick={() => assets.length ? setSidebarCollapsed(false) : openDialog()}>
-                  {assets.length ? t("expandSidebar") : t("addAsset")}
-                </Button>
+                {assets.length > 0
+                  ? <Button variant="outline" size="sm" onClick={toggleSidebar} aria-controls="asset-sidebar" aria-expanded={!sidebarCollapsed}>
+                    {sidebarAction}
+                  </Button>
+                  : <Button variant="outline" size="sm" onClick={() => openDialog()}>{t("addAsset")}</Button>}
               </div>
             )}
             {session.sessions.map((id) => {

@@ -1,8 +1,8 @@
 # HTTP API
 
-All responses use JSON except successful `204 No Content` operations. Error responses have the shape `{"error":"message"}`. Asset and Guacamole proxy routes require the application session cookie when `AUTH_PASSWORD` is configured.
+All responses use JSON except successful `204 No Content` operations. Error responses have the shape `{"error":"message"}`. When login is enabled, asset and Guacamole HTTP requests require `Authorization: Bearer <JWT>`. The WebSocket handshake uses a one-time signed JWT in `remotex_ticket`, valid for up to 30 seconds.
 
-除成功的 `204 No Content` 操作外，响应均为 JSON。错误格式为 `{"error":"message"}`。配置 `AUTH_PASSWORD` 后，资产 API 与 Guacamole 代理需要应用会话 Cookie。
+除成功的 `204 No Content` 操作外，响应均为 JSON。错误格式为 `{"error":"message"}`。启用登录后，资产 API 和 Guacamole HTTP 请求需要 `Authorization: Bearer <JWT>`。WebSocket 握手通过 `remotex_ticket` 传递一次性签名 JWT，最长有效 30 秒。
 
 ## Health and authentication / 健康检查与认证
 
@@ -10,9 +10,12 @@ All responses use JSON except successful `204 No Content` operations. Error resp
 | --- | --- | --- |
 | `GET` | `/api/health` | Process liveness / 进程存活检查 |
 | `GET` | `/api/ready` | SQLite, `guacd`, and Guacamole readiness / SQLite、`guacd` 与 Guacamole 就绪检查 |
-| `GET` | `/api/auth/status` | Authentication state and `sessionIdleSeconds` / 认证状态与空闲超时秒数 |
-| `POST` | `/api/auth/login` | Body: `{"username":"...","password":"..."}` / 登录 |
-| `DELETE` | `/api/auth/session` | Revoke the current session and clear its cookie / 撤销当前会话并清除 Cookie |
+| `GET` | `/api/auth/status` | Authentication state, `oidc`, `sessionIdleSeconds`, and `sessionExpiresInMs` for active JWTs / 认证状态、OIDC 模式、空闲超时秒数与有效 JWT 剩余毫秒数 |
+| `POST` | `/api/auth/login` | Accepts `{"username":"...","password":"..."}` and returns `{"token":"<JWT>"}` / 密码登录并返回 JWT |
+| `POST` | `/api/auth/oidc/start` | Returns the authorization URL, state, nonce, and PKCE verifier / 获取授权地址和回调校验参数 |
+| `POST` | `/api/auth/oidc/exchange` | Accepts `code`, `verifier` and `nonce`, then returns `{"token":"<JWT>"}` / 验证 OIDC 登录并返回 JWT |
+| `POST` | `/api/auth/tunnel` | Exchanges the current Bearer JWT for `{"token":"<tunnel JWT>"}` / 用会话 JWT 换取一次性隧道 JWT |
+| `DELETE` | `/api/auth/session` | Revokes the current Bearer JWT session / 撤销当前 JWT 会话 |
 
 ## Asset shape / 资产结构
 

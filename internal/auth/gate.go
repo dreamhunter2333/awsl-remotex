@@ -1,115 +1,214 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
-	"encoding/base64"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
-const cookieName = "awsl_remotex_session"
-const sessionLifetime = 30 * 24 * time.Hour
+const (
+	issuer          = "awsl-remotex"
+	apiAudience     = "awsl-remotex-api"
+	tunnelAudience  = "awsl-remotex-tunnel"
+	sessionLifetime = 8 * time.Hour
+	tunnelLifetime  = 30 * time.Second
+)
+
+type claims struct {
+	jwt.RegisteredClaims
+	SessionID string `json:"sid,omitempty"`
+}
+
+type sessionRecord struct {
+	expires time.Time
+	ctx     context.Context
+	cancel  context.CancelFunc
+}
 
 type Gate struct {
 	username []byte
 	password []byte
+	required bool
+	key      []byte
 	mu       sync.Mutex
-	sessions map[string]time.Time
+	sessions map[string]sessionRecord
 }
 
-func New(username, password string) *Gate {
+func New(username, password string, oidcEnabled bool) *Gate {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		username = "admin"
 	}
 	password = strings.TrimSpace(password)
-	return &Gate{username: []byte(username), password: []byte(password), sessions: make(map[string]time.Time)}
+	key := make([]byte, 32)
+	rand.Read(key)
+	return &Gate{
+		username: []byte(username),
+		password: []byte(password),
+		required: password != "" || oidcEnabled,
+		key:      key,
+		sessions: make(map[string]sessionRecord),
+	}
 }
 
 func (gate *Gate) Required() bool {
-	return len(gate.password) > 0
+	return gate.required
 }
 
-func (gate *Gate) Authenticated(request *http.Request) bool {
-	if !gate.Required() {
-		return true
+func (gate *Gate) CheckPassword(username, password string) bool {
+	return len(gate.password) > 0 &&
+		subtle.ConstantTimeCompare([]byte(username), gate.username) == 1 &&
+		subtle.ConstantTimeCompare([]byte(password), gate.password) == 1
+}
+
+func (gate *Gate) IssueSession(subject string) (string, error) {
+	return gate.sign(subject, apiAudience, "", time.Now().Add(sessionLifetime))
+}
+
+func (gate *Gate) IssueTunnel(request *http.Request) (string, error) {
+	session := gate.activeSession(request)
+	if session == nil {
+		return "", nil
 	}
-	cookie, err := request.Cookie(cookieName)
+	expires := time.Now().Add(tunnelLifetime)
+	if session.ExpiresAt.Time.Before(expires) {
+		expires = session.ExpiresAt.Time
+	}
+	return gate.sign(session.Subject, tunnelAudience, session.ID, expires)
+}
+
+func (gate *Gate) sign(subject, audience, sessionID string, expires time.Time) (string, error) {
+	now := time.Now()
+	tokenClaims := claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Audience:  jwt.ClaimStrings{audience},
+			Subject:   subject,
+			ID:        rand.Text(),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(expires),
+		},
+		SessionID: sessionID,
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenClaims).SignedString(gate.key)
 	if err != nil {
-		return false
+		return "", err
+	}
+
+	record := sessionRecord{expires: tokenClaims.ExpiresAt.Time}
+	if audience == apiAudience {
+		record.ctx, record.cancel = context.WithDeadline(context.Background(), record.expires)
 	}
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
-	expires, ok := gate.sessions[cookie.Value]
-	if !ok || !time.Now().Before(expires) {
-		delete(gate.sessions, cookie.Value)
-		return false
-	}
-	return true
-}
-
-func (gate *Gate) Login(writer http.ResponseWriter, request *http.Request, username, password string) bool {
-	if !gate.Required() {
-		return true
-	}
-	if !matches(username, gate.username) || !matches(password, gate.password) {
-		return false
-	}
-	var random [32]byte
-	if _, err := rand.Read(random[:]); err != nil {
-		return false
-	}
-	token := base64.RawURLEncoding.EncodeToString(random[:])
-	now := time.Now()
-	gate.mu.Lock()
-	for value, expires := range gate.sessions {
-		if !now.Before(expires) {
-			delete(gate.sessions, value)
+	for id, previous := range gate.sessions {
+		if !now.Before(previous.expires) {
+			if previous.cancel != nil {
+				previous.cancel()
+			}
+			delete(gate.sessions, id)
 		}
 	}
-	if cookie, err := request.Cookie(cookieName); err == nil {
-		delete(gate.sessions, cookie.Value)
-	}
-	gate.sessions[token] = now.Add(sessionLifetime)
-	gate.mu.Unlock()
-	http.SetCookie(writer, &http.Cookie{
-		Name:     cookieName,
-		Value:    token,
-		Path:     "/",
-		MaxAge:   int(sessionLifetime.Seconds()),
-		HttpOnly: true,
-		Secure:   request.TLS != nil || strings.EqualFold(request.Header.Get("X-Forwarded-Proto"), "https"),
-		SameSite: http.SameSiteStrictMode,
-	})
-	return true
+	gate.sessions[tokenClaims.ID] = record
+	return token, nil
 }
 
-func matches(value string, expected []byte) bool {
-	return len(value) == len(expected) && subtle.ConstantTimeCompare([]byte(value), expected) == 1
+func bearer(request *http.Request) string {
+	values := request.Header.Values("Authorization")
+	if len(values) != 1 {
+		return ""
+	}
+	scheme, token, _ := strings.Cut(values[0], " ")
+	if !strings.EqualFold(scheme, "Bearer") {
+		return ""
+	}
+	return token
 }
 
-func (gate *Gate) Logout(writer http.ResponseWriter, request *http.Request) {
-	if cookie, err := request.Cookie(cookieName); err == nil {
-		gate.mu.Lock()
-		delete(gate.sessions, cookie.Value)
-		gate.mu.Unlock()
+func (gate *Gate) verify(raw, audience string) *claims {
+	if raw == "" {
+		return nil
 	}
-	http.SetCookie(writer, &http.Cookie{
-		Name:     cookieName,
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-	})
+	var tokenClaims claims
+	_, err := jwt.ParseWithClaims(raw, &tokenClaims, func(*jwt.Token) (any, error) {
+		return gate.key, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer(issuer),
+		jwt.WithAudience(audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
+	if err != nil || tokenClaims.ID == "" || tokenClaims.Subject == "" {
+		return nil
+	}
+	return &tokenClaims
+}
+
+func (gate *Gate) Authenticated(request *http.Request) bool {
+	return !gate.Required() || gate.activeSession(request) != nil
+}
+
+func (gate *Gate) SessionExpiry(request *http.Request) time.Time {
+	if session := gate.activeSession(request); session != nil {
+		return session.ExpiresAt.Time
+	}
+	return time.Time{}
+}
+
+func (gate *Gate) activeSession(request *http.Request) *claims {
+	session := gate.verify(bearer(request), apiAudience)
+	if session == nil {
+		return nil
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if !time.Now().Before(gate.sessions[session.ID].expires) {
+		return nil
+	}
+	return session
+}
+
+func (gate *Gate) ConsumeTunnel(ctx context.Context, raw string) (context.Context, context.CancelFunc) {
+	token := gate.verify(raw, tunnelAudience)
+	if token == nil {
+		return nil, nil
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	now := time.Now()
+	session := gate.sessions[token.SessionID]
+	if !now.Before(gate.sessions[token.ID].expires) || !now.Before(session.expires) {
+		return nil, nil
+	}
+	delete(gate.sessions, token.ID)
+	tunnel, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(session.ctx, cancel)
+	return tunnel, func() {
+		stop()
+		cancel()
+	}
+}
+
+func (gate *Gate) Logout(request *http.Request) {
+	session := gate.verify(bearer(request), apiAudience)
+	if session == nil {
+		return
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if record := gate.sessions[session.ID]; record.cancel != nil {
+		record.cancel()
+	}
+	delete(gate.sessions, session.ID)
 }
 
 func (gate *Gate) Require(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !gate.Authenticated(request) {
 			writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+			writer.Header().Set("WWW-Authenticate", "Bearer")
 			writer.WriteHeader(http.StatusUnauthorized)
 			_, _ = writer.Write([]byte(`{"error":"authentication required"}`))
 			return
