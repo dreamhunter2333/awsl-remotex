@@ -8,6 +8,7 @@ All notable user-facing changes are recorded here. Versions follow the repositor
 - Improve clipboard synchronization, remote input cleanup, and workspace session handling.
 - Read each asset and its saved credentials together and make schema and asset updates atomic.
 - Build releases with Go 1.26.11, which includes standard-library security fixes, and remove implicit trust in client IP headers.
+- Update the HTTP router and frontend build and test dependencies to patched versions.
 - Add Docker end-to-end coverage for SSH, VNC, xrdp, and Tinyauth in GitHub Actions.
 
 ## v0.2.29 - 2026-11-23
