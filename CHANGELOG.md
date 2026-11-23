@@ -2,6 +2,12 @@
 
 All notable user-facing changes are recorded here. Versions follow the repository's `vMAJOR.MINOR.PATCH` tags.
 
+## v0.2.31 - 2026-11-24
+
+- Show the Audio button for connected RDP sessions. Playback starts muted, and users can toggle it without reconnecting.
+- Keep audio controls available for the current RDP connection after editing the saved protocol. The new protocol takes effect on reconnect.
+- Verify xrdp audio playback and live protocol edits in both directions between SSH and RDP with container end-to-end tests.
+
 ## v0.2.30 - 2026-11-23
 
 - Report RDP reachability separately from desktop sign-in and clear stale connection-test results when connection settings change.
