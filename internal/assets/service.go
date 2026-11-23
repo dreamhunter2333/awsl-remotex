@@ -25,6 +25,12 @@ type Tester interface {
 	Test(context.Context, Asset, credential.Value) error
 }
 
+type ConnectionTicket struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Protocol  string    `json:"protocol"`
+}
+
 type Service struct {
 	repository Repository
 	connector  Connector
@@ -51,15 +57,19 @@ func (service *Service) Delete(ctx context.Context, id string) error {
 	return service.repository.DeleteAsset(ctx, id)
 }
 
-func (service *Service) Connect(ctx context.Context, id, theme string) (string, time.Time, error) {
+func (service *Service) Connect(ctx context.Context, id, theme string) (ConnectionTicket, error) {
 	if service.connector == nil {
-		return "", time.Time{}, errors.New("Apache Guacamole is not configured")
+		return ConnectionTicket{}, errors.New("Apache Guacamole is not configured")
 	}
 	asset, value, err := service.repository.GetAssetWithCredential(ctx, id)
 	if err != nil {
-		return "", time.Time{}, err
+		return ConnectionTicket{}, err
 	}
-	return service.connector.ConnectionURL(asset, value, theme)
+	url, expiresAt, err := service.connector.ConnectionURL(asset, value, theme)
+	if err != nil {
+		return ConnectionTicket{}, err
+	}
+	return ConnectionTicket{URL: url, ExpiresAt: expiresAt, Protocol: asset.Protocol}, nil
 }
 
 func (service *Service) TestSaved(ctx context.Context, id string) (loginUnverified bool, err error) {

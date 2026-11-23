@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type
 import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import type { Asset } from "@/lib/api"
+import type { Asset, ConnectionTicket } from "@/lib/api"
 import type { GuacamoleFailure } from "@/lib/guacamole-connection"
 import { GuacamoleSession, type ClipboardDirection } from "@/lib/guacamole-session"
 import { usePreferences, type MessageKey } from "@/lib/preferences"
@@ -22,7 +22,7 @@ interface SessionViewportProps {
   ref?: Ref<SessionHandle>
   active: boolean
   asset: Asset
-  connectionURL?: string
+  connection?: ConnectionTicket
   connectionError?: string
   connecting: boolean
   onReconnect: () => void
@@ -51,7 +51,7 @@ export function SessionViewport({
   ref,
   active,
   asset,
-  connectionURL,
+  connection,
   connectionError,
   connecting,
   onReconnect,
@@ -145,13 +145,13 @@ export function SessionViewport({
     const { asset } = current.current
     vncSettingsRef.current = asset.settings?.vnc
     const controller = controllerRef.current
-    if (!controller || !connectionURL) {
+    if (!controller || !connection) {
       void controller?.disconnect()
       return
     }
-    void controller.connect(asset.name, connectionURL, asset.protocol === "rdp")
+    void controller.connect(asset.name, connection.url, connection.protocol === "rdp")
     return () => { void controller.disconnect() }
-  }, [connectionURL])
+  }, [connection])
 
   useEffect(() => {
     if (!active || !frameReady) return
@@ -171,7 +171,7 @@ export function SessionViewport({
 
   return (
     <section ref={viewportRef} className="relative h-full min-h-0 overflow-hidden bg-[var(--canvas)]">
-      <div ref={displayHostRef} className={cn("grid size-full place-items-center overflow-hidden transition-opacity duration-100", connectionURL && frameReady ? "opacity-100" : "opacity-0")}>
+      <div ref={displayHostRef} className={cn("grid size-full place-items-center overflow-hidden transition-opacity duration-100", connection && frameReady ? "opacity-100" : "opacity-0")}>
         <div ref={displaySurfaceRef} className="relative shrink-0" />
       </div>
       <textarea
@@ -185,12 +185,12 @@ export function SessionViewport({
         spellCheck={false}
         className="fixed bottom-0 left-0 size-px resize-none opacity-0 outline-none"
       />
-      {connectionURL && !frameReady && (
+      {connection && !frameReady && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]">
           <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />
         </div>
       )}
-      {!connectionURL && (
+      {!connection && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]">
           {connecting || !connectionError ? (
             <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />

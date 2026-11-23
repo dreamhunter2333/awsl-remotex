@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { SessionHandle } from "@/components/session"
-import { api, type Asset } from "@/lib/api"
+import { api, type Asset, type ConnectionTicket } from "@/lib/api"
 import { clearSessions, loadSessions, saveSessions } from "@/lib/sessions"
 
 const READY_TIMEOUT_MS = 15_000
@@ -14,7 +14,7 @@ interface ConnectionAttempt {
 export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: number, connectionFailed: string, sessionEnded: string) {
   const [sessions, setSessions] = useState<string[]>([])
   const [activeSession, setActiveSessionState] = useState<string>()
-  const [connectionURLs, setConnectionURLs] = useState<Record<string, string>>({})
+  const [connections, setConnections] = useState<Record<string, ConnectionTicket>>({})
   const [connectionErrors, setConnectionErrors] = useState<Record<string, string>>({})
   const [connectingIDs, setConnectingIDs] = useState<Set<string>>(() => new Set())
   const [connectedIDs, setConnectedIDs] = useState<Set<string>>(() => new Set())
@@ -22,7 +22,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
   const [idleClosed, setIdleClosed] = useState("")
   const sessionsRef = useRef<string[]>([])
   const activeRef = useRef<string | undefined>(undefined)
-  const urlsRef = useRef<Record<string, string>>({})
+  const connectionsRef = useRef<Record<string, ConnectionTicket>>({})
   const activityRef = useRef<Record<string, number>>({})
   const handlesRef = useRef(new Map<string, SessionHandle>())
   const attemptsRef = useRef(new Map<string, ConnectionAttempt>())
@@ -34,10 +34,10 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     setSessions(next)
   }, [])
 
-  const updateURLs = useCallback((updater: (current: Record<string, string>) => Record<string, string>) => {
-    const next = updater(urlsRef.current)
-    urlsRef.current = next
-    setConnectionURLs(next)
+  const updateConnections = useCallback((updater: (current: Record<string, ConnectionTicket>) => Record<string, ConnectionTicket>) => {
+    const next = updater(connectionsRef.current)
+    connectionsRef.current = next
+    setConnections(next)
   }, [])
 
   const markActivity = useCallback((id: string) => {
@@ -114,7 +114,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
           }
           const timeout = window.setTimeout(releaseQueue, READY_TIMEOUT_MS)
           attempt.releaseQueue = releaseQueue
-          updateURLs((current) => ({ ...current, [asset.id]: ticket.url }))
+          updateConnections((current) => ({ ...current, [asset.id]: ticket }))
         })
       } catch (reason) {
         if (signal.aborted) return
@@ -129,7 +129,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
         }
       }
     })
-  }, [connectionFailed, setConnected, updateConnecting, updateURLs])
+  }, [connectionFailed, setConnected, updateConnecting, updateConnections])
 
   const close = useCallback((id: string) => {
     cancelConnection(id)
@@ -143,20 +143,20 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
       activeRef.current = next[Math.min(index, next.length - 1)]
       setActiveSessionState(activeRef.current)
     }
-    updateURLs((urls) => omitKey(urls, id))
+    updateConnections((current) => omitKey(current, id))
     setConnectionErrors((errors) => omitKey(errors, id))
     delete activityRef.current[id]
     setAudioEnabled(id, false)
     setConnected(id, false)
-  }, [cancelConnection, setAudioEnabled, setConnected, updateSessions, updateURLs])
+  }, [cancelConnection, setAudioEnabled, setConnected, updateSessions, updateConnections])
 
   const reconnect = useCallback((asset: Asset) => {
     setConnected(asset.id, false)
     cancelConnection(asset.id)
     void handlesRef.current.get(asset.id)?.disconnect()
-    updateURLs((current) => omitKey(current, asset.id))
+    updateConnections((current) => omitKey(current, asset.id))
     connect(asset)
-  }, [cancelConnection, connect, setConnected, updateURLs])
+  }, [cancelConnection, connect, setConnected, updateConnections])
 
   const toggleAudio = useCallback((id: string) => {
     handlesRef.current.get(id)?.toggleAudio()
@@ -167,7 +167,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     const next = sessionsRef.current.includes(asset.id) ? sessionsRef.current : [...sessionsRef.current, asset.id]
     updateSessions(next)
     setActiveSession(asset.id)
-    if (!urlsRef.current[asset.id]) connect(asset)
+    if (!connectionsRef.current[asset.id]) connect(asset)
   }, [connect, setActiveSession, updateSessions])
 
   const ended = useCallback((id: string, message = sessionEnded) => {
@@ -175,9 +175,9 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     setConnected(id, false)
     cancelConnection(id)
     void handlesRef.current.get(id)?.disconnect()
-    updateURLs((current) => omitKey(current, id))
+    updateConnections((current) => omitKey(current, id))
     setConnectionErrors((current) => ({ ...current, [id]: message }))
-  }, [cancelConnection, sessionEnded, setConnected, updateURLs])
+  }, [cancelConnection, sessionEnded, setConnected, updateConnections])
 
   const readySession = useCallback((id: string) => {
     if (!sessionsRef.current.includes(id)) return
@@ -218,7 +218,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     handlesRef.current.clear()
     activeRef.current = undefined
     setActiveSessionState(undefined)
-    updateURLs(() => ({}))
+    updateConnections(() => ({}))
     setConnectionErrors({})
     setConnectedIDs(new Set())
     setAudioEnabledIDs(new Set())
@@ -226,7 +226,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     setIdleClosed("")
     clearSessions()
     return Promise.allSettled(disconnections)
-  }, [cancelAllConnections, updateConnecting, updateSessions, updateURLs])
+  }, [cancelAllConnections, updateConnecting, updateSessions, updateConnections])
 
   useEffect(() => () => {
     cancelAllConnections()
@@ -276,7 +276,7 @@ export function useSessions(assets: Asset[], ready: boolean, idleTimeoutMs: numb
     sessions,
     activeSession,
     setActiveSession,
-    connectionURLs,
+    connections,
     connectionErrors,
     connectingIDs,
     connectedIDs,

@@ -45,6 +45,7 @@ export interface AssetInput {
 export interface ConnectionTicket {
   url: string
   expiresAt: string
+  protocol: Protocol
 }
 
 export interface AuthStatus {

@@ -376,6 +376,74 @@ test("VNC and RDP tabs keep their sessions when switching or closing a tab", asy
   }
 })
 
+async function editAssetProtocol(page: Page, name: string, protocol: "ssh" | "rdp") {
+  await assetButton(page, name).locator("..").getByRole("button", { name: "Edit asset" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("button", { name: protocol, exact: true }).click()
+  await dialog.getByLabel("Port", { exact: true }).fill(String(protocols[protocol].port))
+  await dialog.getByLabel("Connection password").fill(protocols[protocol].password)
+  await dialog.getByRole("button", { name: "Save changes" }).click()
+  await expect(dialog).toBeHidden()
+}
+
+test("editing SSH to RDP shows audio only after reconnect", async ({ page, request }) => {
+  const headers = await apiSession(request)
+  const asset = fixtureAsset("ssh")
+  const id = await createAsset(request, headers, asset)
+  const tunnels = watchTunnels(page)
+  const sound = page.getByRole("button", { name: "Audio", exact: true })
+
+  try {
+    await signIn(page)
+    await assetButton(page, asset.name).dblclick()
+    await expectConnected(page, asset.name)
+    await expect(sound).toHaveCount(0)
+
+    await editAssetProtocol(page, asset.name, "rdp")
+    await expect(sound).toHaveCount(0)
+    expect(tunnels.opened()).toBe(1)
+    expect(tunnels.closed()).toBe(0)
+
+    await page.getByRole("button", { name: "Reconnect" }).click()
+    await expect.poll(tunnels.opened).toBe(2)
+    await expectConnected(page, asset.name)
+    await expect(sound).toBeEnabled()
+    await expect(sound).toHaveAttribute("aria-pressed", "false")
+  } finally {
+    await request.delete(`/api/assets/${id}`, { headers })
+  }
+})
+
+test("editing RDP to SSH keeps audio controls until reconnect", async ({ page, request }) => {
+  const headers = await apiSession(request)
+  const asset = fixtureAsset("rdp")
+  const id = await createAsset(request, headers, asset)
+  const tunnels = watchTunnels(page)
+  const sound = page.getByRole("button", { name: "Audio", exact: true })
+
+  try {
+    await signIn(page)
+    await assetButton(page, asset.name).dblclick()
+    await expectConnected(page, asset.name)
+    await sound.click()
+    await expect(sound).toHaveAttribute("aria-pressed", "true")
+
+    await editAssetProtocol(page, asset.name, "ssh")
+    await expect(sound).toHaveAttribute("aria-pressed", "true")
+    await sound.click()
+    await expect(sound).toHaveAttribute("aria-pressed", "false")
+    expect(tunnels.opened()).toBe(1)
+    expect(tunnels.closed()).toBe(0)
+
+    await page.getByRole("button", { name: "Reconnect" }).click()
+    await expect.poll(tunnels.opened).toBe(2)
+    await expectConnected(page, asset.name)
+    await expect(sound).toHaveCount(0)
+  } finally {
+    await request.delete(`/api/assets/${id}`, { headers })
+  }
+})
+
 test("RDP audio is muted by default, plays on click, and mutes on reconnect", async ({ page, request }) => {
   const headers = await apiSession(request)
   const asset = fixtureAsset("rdp")

@@ -133,6 +133,7 @@ export default function App() {
   const activeAsset = assetsByID.get(session.activeSession ?? "")
   const activeConnected = Boolean(activeAsset && session.connectedIDs.has(activeAsset.id))
   const activeConnecting = Boolean(activeAsset && session.connectingIDs.has(activeAsset.id))
+  const activeConnection = activeAsset && session.connections[activeAsset.id]
   const sidebarAction = t(sidebarCollapsed ? "expandSidebar" : "collapseSidebar")
   const toggleSidebar = () => setSidebarCollapsed((collapsed) => !collapsed)
 
@@ -291,7 +292,7 @@ export default function App() {
               connecting={activeConnecting}
               fullscreen={fullscreen}
               audioEnabled={Boolean(activeAsset && session.audioEnabledIDs.has(activeAsset.id))}
-              showAudio={activeAsset?.protocol === "rdp" && Boolean(getAudioContextConstructor())}
+              showAudio={activeConnected && activeConnection?.protocol === "rdp" && Boolean(getAudioContextConstructor())}
               onToggleAudio={() => activeAsset && session.toggleAudio(activeAsset.id)}
               onClipboard={() => {
                 setClipboardOpen(true)
@@ -326,7 +327,7 @@ export default function App() {
                     ref={(handle) => session.registerHandle(id, handle)}
                     active={session.activeSession === id}
                     asset={asset}
-                    connectionURL={session.connectionURLs[id]}
+                    connection={session.connections[id]}
                     connectionError={session.connectionErrors[id]}
                     connecting={session.connectingIDs.has(id)}
                     onReconnect={() => session.reconnect(asset)}
