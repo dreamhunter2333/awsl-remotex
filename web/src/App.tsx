@@ -12,6 +12,7 @@ import { SessionViewport } from "@/components/session"
 import { SessionTabs } from "@/components/session-tabs"
 import { Button } from "@/components/ui/button"
 import { api, completeOIDC, expireSession, sessionExpiredEvent, type Asset, type AssetInput, type AuthStatus } from "@/lib/api"
+import { getAudioContextConstructor } from "@/lib/guacamole-audio"
 import type { ClipboardDirection } from "@/lib/guacamole-session"
 import { readLocalStorage, writeLocalStorage } from "@/lib/local-storage"
 import { usePreferences } from "@/lib/preferences"
@@ -132,6 +133,7 @@ export default function App() {
   const activeAsset = assetsByID.get(session.activeSession ?? "")
   const activeConnected = Boolean(activeAsset && session.connectedIDs.has(activeAsset.id))
   const activeConnecting = Boolean(activeAsset && session.connectingIDs.has(activeAsset.id))
+  const activeConnection = activeAsset && session.connections[activeAsset.id]
   const sidebarAction = t(sidebarCollapsed ? "expandSidebar" : "collapseSidebar")
   const toggleSidebar = () => setSidebarCollapsed((collapsed) => !collapsed)
 
@@ -290,8 +292,8 @@ export default function App() {
               connecting={activeConnecting}
               fullscreen={fullscreen}
               audioEnabled={Boolean(activeAsset && session.audioEnabledIDs.has(activeAsset.id))}
-              showAudio={activeAsset?.protocol === "rdp" && session.audioSupportedIDs.has(activeAsset.id)}
-              onToggleAudio={() => activeAsset && session.toggleAudio(activeAsset)}
+              showAudio={activeConnected && activeConnection?.protocol === "rdp" && Boolean(getAudioContextConstructor())}
+              onToggleAudio={() => activeAsset && session.toggleAudio(activeAsset.id)}
               onClipboard={() => {
                 setClipboardOpen(true)
                 if (activeAsset) void session.syncClipboard(activeAsset.id)
@@ -325,14 +327,14 @@ export default function App() {
                     ref={(handle) => session.registerHandle(id, handle)}
                     active={session.activeSession === id}
                     asset={asset}
-                    connectionURL={session.connectionURLs[id]}
+                    connection={session.connections[id]}
                     connectionError={session.connectionErrors[id]}
                     connecting={session.connectingIDs.has(id)}
                     onReconnect={() => session.reconnect(asset)}
                     onSessionEnded={(message) => session.ended(id, message)}
                     onReady={() => session.ready(id)}
                     onActivity={() => session.activity(id)}
-                    onAudioCapability={(supported) => session.setAudioSupported(id, supported)}
+                    onAudioChanged={(enabled) => session.setAudioEnabled(id, enabled)}
                     onClipboard={(direction, succeeded, text) => showClipboardToast(id, direction, succeeded, text)}
                   />
                 </div>

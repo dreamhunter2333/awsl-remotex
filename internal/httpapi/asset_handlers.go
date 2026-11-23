@@ -60,11 +60,11 @@ func (server *Server) deleteAsset(writer http.ResponseWriter, request *http.Requ
 }
 
 func (server *Server) connectAsset(writer http.ResponseWriter, request *http.Request) {
-	connectionURL, expires, err := server.assets.Connect(request.Context(), chi.URLParam(request, "id"), request.URL.Query().Get("theme"))
+	ticket, err := server.assets.Connect(request.Context(), chi.URLParam(request, "id"), request.URL.Query().Get("theme"))
 	if server.writeAssetError(writer, request, err) {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"url": connectionURL, "expiresAt": expires})
+	writeJSON(writer, http.StatusOK, ticket)
 }
 
 func (server *Server) testAsset(writer http.ResponseWriter, request *http.Request) {

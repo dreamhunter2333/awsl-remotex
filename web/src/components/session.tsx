@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type
 import { LoaderCircle, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import type { Asset } from "@/lib/api"
+import type { Asset, ConnectionTicket } from "@/lib/api"
 import type { GuacamoleFailure } from "@/lib/guacamole-connection"
 import { GuacamoleSession, type ClipboardDirection } from "@/lib/guacamole-session"
 import { usePreferences, type MessageKey } from "@/lib/preferences"
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 export interface SessionHandle {
   captureKeys: (onComplete: (keys: readonly number[]) => void) => (() => void) | undefined
   disconnect: () => Promise<void>
-  setAudioEnabled: (enabled: boolean) => void
+  toggleAudio: () => void
   sendClipboard: (text: string) => boolean
   showKeyboard: () => boolean
   sendKeys: (keys: readonly number[]) => boolean
@@ -22,14 +22,14 @@ interface SessionViewportProps {
   ref?: Ref<SessionHandle>
   active: boolean
   asset: Asset
-  connectionURL?: string
+  connection?: ConnectionTicket
   connectionError?: string
   connecting: boolean
   onReconnect: () => void
   onSessionEnded: (message: string) => void
   onReady: () => void
   onActivity: () => void
-  onAudioCapability: (supported: boolean) => void
+  onAudioChanged: (enabled: boolean) => void
   onClipboard: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
 }
 
@@ -51,14 +51,14 @@ export function SessionViewport({
   ref,
   active,
   asset,
-  connectionURL,
+  connection,
   connectionError,
   connecting,
   onReconnect,
   onSessionEnded,
   onReady,
   onActivity,
-  onAudioCapability,
+  onAudioChanged,
   onClipboard,
 }: SessionViewportProps) {
   const { t } = usePreferences()
@@ -70,7 +70,7 @@ export function SessionViewport({
   const controllerRef = useRef<GuacamoleSession>(null)
   const vncSettingsRef = useRef(asset.settings?.vnc)
   const notifyResizeRef = useRef<() => void>(null)
-  const bindings = { active, asset, onSessionEnded, onReady, onActivity, onAudioCapability, onClipboard, t }
+  const bindings = { active, asset, onSessionEnded, onReady, onActivity, onAudioChanged, onClipboard, t }
   const current = useRef(bindings)
 
   useLayoutEffect(() => {
@@ -80,7 +80,7 @@ export function SessionViewport({
   useImperativeHandle(ref, () => ({
     captureKeys: (onComplete) => controllerRef.current?.captureKeys(onComplete),
     disconnect: () => controllerRef.current?.disconnect() ?? Promise.resolve(),
-    setAudioEnabled: (enabled) => controllerRef.current?.setAudioEnabled(enabled),
+    toggleAudio: () => controllerRef.current?.toggleAudio(),
     sendClipboard: (text) => controllerRef.current?.setClipboard(text) ?? false,
     showKeyboard: () => controllerRef.current?.focus() ?? false,
     sendKeys: (keys) => controllerRef.current?.sendKeys(keys) ?? false,
@@ -112,7 +112,7 @@ export function SessionViewport({
       isRemoteCursor: () => vncSettingsRef.current?.cursor === "remote",
       isWheelReversed: () => vncSettingsRef.current?.wheelDirection === "reverse",
       onActivity: () => current.current.onActivity(),
-      onAudioCapability: (supported) => current.current.onAudioCapability(supported),
+      onAudioChanged: (enabled) => current.current.onAudioChanged(enabled),
       onClipboard: (direction, succeeded, text) => current.current.onClipboard(direction, succeeded, text),
       onDisplayResize: notifyResize,
       onEnded: (failure) => {
@@ -145,13 +145,13 @@ export function SessionViewport({
     const { asset } = current.current
     vncSettingsRef.current = asset.settings?.vnc
     const controller = controllerRef.current
-    if (!controller || !connectionURL) {
+    if (!controller || !connection) {
       void controller?.disconnect()
       return
     }
-    void controller.connect(asset.name, connectionURL)
+    void controller.connect(asset.name, connection.url, connection.protocol === "rdp")
     return () => { void controller.disconnect() }
-  }, [connectionURL])
+  }, [connection])
 
   useEffect(() => {
     if (!active || !frameReady) return
@@ -171,7 +171,7 @@ export function SessionViewport({
 
   return (
     <section ref={viewportRef} className="relative h-full min-h-0 overflow-hidden bg-[var(--canvas)]">
-      <div ref={displayHostRef} className={cn("grid size-full place-items-center overflow-hidden transition-opacity duration-100", connectionURL && frameReady ? "opacity-100" : "opacity-0")}>
+      <div ref={displayHostRef} className={cn("grid size-full place-items-center overflow-hidden transition-opacity duration-100", connection && frameReady ? "opacity-100" : "opacity-0")}>
         <div ref={displaySurfaceRef} className="relative shrink-0" />
       </div>
       <textarea
@@ -185,12 +185,12 @@ export function SessionViewport({
         spellCheck={false}
         className="fixed bottom-0 left-0 size-px resize-none opacity-0 outline-none"
       />
-      {connectionURL && !frameReady && (
+      {connection && !frameReady && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]">
           <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />
         </div>
       )}
-      {!connectionURL && (
+      {!connection && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--canvas)]">
           {connecting || !connectionError ? (
             <LoaderCircle className="size-4 animate-spin text-[var(--subtle)]" />

@@ -3,7 +3,7 @@ import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 
-import type { Asset } from "@/lib/api"
+import type { Asset, ConnectionTicket } from "@/lib/api"
 import { SessionViewport } from "./session"
 
 const { connect, disconnect, dispose } = vi.hoisted(() => ({
@@ -36,24 +36,26 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-it("preserves a live connection on rename and uses the new name only with a fresh ticket", async () => {
+it("preserves a live connection on edit and uses the protocol from each ticket", async () => {
   const asset: Asset = {
     id: "asset", name: "Before", group: "", protocol: "ssh", host: "localhost", port: 22,
     username: "", credentialType: "prompt", credentialConfigured: false, createdAt: "", updatedAt: "",
   }
+  const connection: ConnectionTicket = { url: "old-ticket", expiresAt: "", protocol: "ssh" }
   const props = {
-    active: true, connecting: false, asset, connectionURL: "old-ticket",
+    active: true, connecting: false, asset, connection,
     onReconnect: vi.fn(), onSessionEnded: vi.fn(), onReady: vi.fn(), onActivity: vi.fn(),
-    onAudioCapability: vi.fn(), onClipboard: vi.fn(),
+    onAudioChanged: vi.fn(), onClipboard: vi.fn(),
   }
   await act(async () => root.render(<SessionViewport {...props} />))
-  expect(connect).toHaveBeenCalledWith("Before", "old-ticket")
-  const renamed = { ...asset, name: "After" }
-  await act(async () => root.render(<SessionViewport {...props} asset={renamed} />))
+  expect(connect).toHaveBeenCalledWith("Before", "old-ticket", false)
+  const edited: Asset = { ...asset, name: "After", protocol: "vnc" }
+  await act(async () => root.render(<SessionViewport {...props} asset={edited} />))
   expect(connect).toHaveBeenCalledTimes(1)
   expect(disconnect).not.toHaveBeenCalled()
-  await act(async () => root.render(<SessionViewport {...props} asset={renamed} connectionURL="fresh-ticket" />))
+  const fresh: ConnectionTicket = { url: "fresh-ticket", expiresAt: "", protocol: "rdp" }
+  await act(async () => root.render(<SessionViewport {...props} asset={edited} connection={fresh} />))
   expect(connect).toHaveBeenCalledTimes(2)
-  expect(connect).toHaveBeenLastCalledWith("After", "fresh-ticket")
+  expect(connect).toHaveBeenLastCalledWith("After", "fresh-ticket", true)
   expect(disconnect).toHaveBeenCalledTimes(1)
 })

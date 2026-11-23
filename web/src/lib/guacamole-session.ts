@@ -1,7 +1,7 @@
 import type { Client, Event as GuacamoleEvent, Mouse } from "guacamole-common-js"
 
 import { api } from "./api"
-import { GuacamoleAudioPlayer } from "./guacamole-audio"
+import { getAudioContextConstructor, GuacamoleAudioPlayer } from "./guacamole-audio"
 import {
   authenticateGuacamole, buildGuacamoleConnectData, classifyGuacamoleFailure, GuacamoleSessionError,
   readGuacamoleTicket, revokeGuacamoleSession, type GuacamoleAuthResponse, type GuacamoleFailure,
@@ -19,7 +19,7 @@ interface GuacamoleSessionCallbacks {
   isRemoteCursor?: () => boolean
   isWheelReversed?: () => boolean
   onActivity: () => void
-  onAudioCapability?: (supported: boolean) => void
+  onAudioChanged?: (enabled: boolean) => void
   onClipboard?: (direction: ClipboardDirection, succeeded: boolean, text?: string) => void
   onDisplayResize: () => void
   onEnded: (failure: GuacamoleFailure) => void
@@ -39,7 +39,6 @@ export class GuacamoleSession {
   private abortController?: AbortController
   private audioTypes: readonly string[] = []
   private audioContext?: AudioContext
-  private audioEnabled = false
   private readonly audioPlayers = new Set<GuacamoleAudioPlayer>()
   private client?: Client
   private connected = false
@@ -64,7 +63,7 @@ export class GuacamoleSession {
     this.keyboardInput.addEventListener("input", this.clearInput)
   }
 
-  async connect(connectionID: string, connectionURL: string) {
+  async connect(connectionID: string, connectionURL: string, redirectAudio = false) {
     const generation = ++this.generation
     void this.releaseCurrent()
     ++this.clipboardRevision
@@ -81,7 +80,7 @@ export class GuacamoleSession {
       const sdk = await (this.dependencies.loadSDK ?? loadGuacamoleSDK)()
       if (!isCurrent()) return
       this.sdk = sdk
-      this.audioTypes = sdk.AudioPlayer.getSupportedTypes()
+      this.audioTypes = redirectAudio && getAudioContextConstructor() ? ["audio/L8", "audio/L16"] : []
       const auth = await (this.dependencies.authenticate ?? authenticateGuacamole)(ticket, signal)
       if (!isCurrent()) {
         void (this.dependencies.revoke ?? revokeGuacamoleSession)(auth.authToken)
@@ -118,17 +117,33 @@ export class GuacamoleSession {
     return this.keyboardInput.ownerDocument.activeElement === this.keyboardInput
   }
 
-  setAudioEnabled(enabled: boolean) {
-    this.audioEnabled = enabled
-    for (const player of this.audioPlayers) player.setEnabled(enabled)
-    if (enabled && this.audioContext && this.audioContext.state !== "running") {
-      const context = this.audioContext
-      void context.resume().catch(() => {
-        if (this.audioContext !== context) return
-        this.setAudioEnabled(false)
-        this.callbacks.onAudioCapability?.(false)
-      })
+  toggleAudio() {
+    if (this.audioContext) {
+      this.muteAudio()
+      return
     }
+    const Context = getAudioContextConstructor()
+    if (!this.connected || !this.audioTypes.length || !Context) return
+    try {
+      const context = new Context()
+      this.audioContext = context
+      for (const player of this.audioPlayers) player.setContext(context)
+      this.callbacks.onAudioChanged?.(true)
+      if (context.state !== "running") void context.resume().catch(() => {
+        if (this.audioContext === context) this.muteAudio()
+      })
+    } catch {
+      this.muteAudio()
+    }
+  }
+
+  private muteAudio() {
+    const context = this.audioContext
+    if (!context) return
+    this.audioContext = undefined
+    for (const player of this.audioPlayers) player.setContext(undefined)
+    void context.close().catch(() => undefined)
+    this.callbacks.onAudioChanged?.(false)
   }
 
   async syncClipboard() {
@@ -299,19 +314,11 @@ export class GuacamoleSession {
 
     client.onaudio = (stream, mimetype) => {
       const format = sdk.RawAudioFormat.parse(mimetype)
-      const Context = window.AudioContext ?? window.webkitAudioContext
-      if (!format || !Context) return { sync() {} }
-      try {
-        this.audioContext ??= new Context()
-        const player = new GuacamoleAudioPlayer(sdk, stream, format, this.audioContext, () => {
-          if (this.client === client) this.callbacks.onAudioCapability?.(true)
-        })
-        player.setEnabled(this.audioEnabled)
-        this.audioPlayers.add(player)
-        return player
-      } catch {
-        return { sync() {} }
-      }
+      if (!this.audioTypes.length || !format || !Number.isInteger(format.channels) || format.channels < 1 || format.channels > 32 || !(format.rate >= 8000 && format.rate <= 96000)) return { sync() {} }
+      const player = new GuacamoleAudioPlayer(sdk, stream, format, () => this.audioPlayers.delete(player))
+      player.setContext(this.audioContext)
+      this.audioPlayers.add(player)
+      return player
     }
     client.onclipboard = (stream, mimetype) => {
       if (!mimetype.startsWith("text/")) return
@@ -359,12 +366,8 @@ export class GuacamoleSession {
   }
 
   private async releaseCurrent() {
-    this.setAudioEnabled(false)
+    this.muteAudio()
     this.audioPlayers.clear()
-    const audioContext = this.audioContext
-    this.audioContext = undefined
-    if (audioContext) void audioContext.close().catch(() => undefined)
-    this.callbacks.onAudioCapability?.(false)
     this.abortController?.abort()
     this.abortController = undefined
     this.clipboardSync = undefined

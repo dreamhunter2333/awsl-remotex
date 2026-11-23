@@ -35,29 +35,28 @@ function createPlayer(mimetype = "audio/L16;rate=44100,channels=2") {
     },
   }
   const stream = {} as InputStream
-  const onData = vi.fn()
-  const player = new GuacamoleAudioPlayer(sdk, stream, sdk.RawAudioFormat.parse(mimetype), context as unknown as AudioContext, onData)
+  const drained = vi.fn()
+  const player = new GuacamoleAudioPlayer(sdk, stream, sdk.RawAudioFormat.parse(mimetype), drained)
   const send = (samples: Int8Array | Int16Array) => stream.onblob?.(Buffer.from(samples.buffer).toString("base64"))
-  return { context, onData, player, send, sources }
+  const unmute = () => player.setContext(context as unknown as AudioContext)
+  return { context, drained, player, send, sources, stream, unmute }
 }
 
 describe("session audio using the bundled Guacamole stream reader", () => {
-  it("confirms support only once actual audio data arrives, even while muted", () => {
+  it("discards audio until playback is enabled and frees a finished muted stream", () => {
     const runtime = createPlayer()
-    expect(runtime.onData).not.toHaveBeenCalled()
-    runtime.send(new Int16Array())
-    expect(runtime.onData).not.toHaveBeenCalled()
     runtime.send(new Int16Array([1, 2]))
     runtime.send(new Int16Array([3, 4]))
-    expect(runtime.onData).toHaveBeenCalledOnce()
     expect(runtime.sources).toHaveLength(0)
+    runtime.stream.onend?.()
+    expect(runtime.drained).toHaveBeenCalledOnce()
   })
 
   it("discards muted data and decodes newly received stereo PCM after enabling", () => {
     const runtime = createPlayer()
     runtime.send(new Int16Array([1, 2, 3, 4]))
     expect(runtime.sources).toHaveLength(0)
-    runtime.player.setEnabled(true)
+    runtime.unmute()
     expect(runtime.sources).toHaveLength(0)
     runtime.send(new Int16Array([-32768, 16384, 8192, -16384]))
     expect(Array.from(runtime.sources[0].buffer!.getChannelData(0))).toEqual([-1, 0.25])
@@ -69,12 +68,12 @@ describe("session audio using the bundled Guacamole stream reader", () => {
     const first = createPlayer()
     const second = createPlayer()
     for (const runtime of [first, second]) {
-      runtime.player.setEnabled(true)
+      runtime.unmute()
       runtime.send(new Int16Array(88200))
       runtime.send(new Int16Array(88200))
     }
     expect(first.sources[1].start).toHaveBeenCalledWith(11)
-    first.player.setEnabled(false)
+    first.player.setContext(undefined)
     for (const source of first.sources) {
       expect(source.stop).toHaveBeenCalledOnce()
       expect(source.disconnect).toHaveBeenCalledOnce()
@@ -83,14 +82,14 @@ describe("session audio using the bundled Guacamole stream reader", () => {
     first.send(new Int16Array(88200))
     expect(first.sources).toHaveLength(2)
     first.context.currentTime = 20
-    first.player.setEnabled(true)
+    first.unmute()
     first.send(new Int16Array(88200))
     expect(first.sources[2].start).toHaveBeenCalledWith(20)
   })
 
   it("discards suspended-context data and releases finished 8-bit sources", () => {
     const runtime = createPlayer("audio/L8;rate=22050,channels=1")
-    runtime.player.setEnabled(true)
+    runtime.unmute()
     runtime.context.state = "suspended"
     runtime.send(new Int8Array([-128, 64]))
     expect(runtime.sources).toHaveLength(0)
@@ -98,9 +97,12 @@ describe("session audio using the bundled Guacamole stream reader", () => {
     runtime.send(new Int8Array([-128, 64]))
     const source = runtime.sources[0]
     expect(Array.from(source.buffer!.getChannelData(0))).toEqual([-1, 0.5])
+    runtime.stream.onend?.()
+    expect(runtime.drained).not.toHaveBeenCalled()
     source.onended?.()
+    expect(runtime.drained).toHaveBeenCalledOnce()
     expect(source.disconnect).toHaveBeenCalledOnce()
-    runtime.player.setEnabled(false)
+    runtime.player.setContext(undefined)
     expect(source.stop).not.toHaveBeenCalled()
   })
 })

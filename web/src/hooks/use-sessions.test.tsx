@@ -12,7 +12,7 @@ const asset: Asset = {
   username: "", credentialType: "prompt", credentialConfigured: false, createdAt: "", updatedAt: "",
 }
 const second = { ...asset, id: "second" }
-const ticket = (url: string): ConnectionTicket => ({ url, expiresAt: "" })
+const ticket = (url: string): ConnectionTicket => ({ url, expiresAt: "", protocol: "ssh" })
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -65,7 +65,7 @@ describe("session connection cancellation", () => {
     await act(async () => pending.resolve(ticket("old-ticket")))
     expect(connect).toHaveBeenCalledTimes(1)
     expect(session.sessions).toEqual([])
-    expect(session.connectionURLs).toEqual({})
+    expect(session.connections).toEqual({})
     expect(session.connectionErrors).toEqual({})
   })
 
@@ -80,7 +80,7 @@ describe("session connection cancellation", () => {
     expect(session.connectingIDs.has(asset.id)).toBe(true)
     expect(session.connectionErrors[asset.id]).toBe("")
     await act(async () => fresh.resolve(ticket("fresh-ticket")))
-    expect(session.connectionURLs[asset.id]).toBe("fresh-ticket")
+    expect(session.connections[asset.id]).toEqual(ticket("fresh-ticket"))
     await act(async () => session.ready(asset.id))
     expect(session.connectingIDs.size).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
@@ -102,7 +102,7 @@ describe("session connection cancellation", () => {
     await act(async () => session.open(asset))
     await act(async () => session.reconnect(asset))
     expect(connect).toHaveBeenCalledTimes(2)
-    expect(session.connectionURLs[asset.id]).toBe("fresh-ticket")
+    expect(session.connections[asset.id]).toEqual(ticket("fresh-ticket"))
     expect(session.connectionErrors[asset.id]).toBe("")
     expect(session.connectingIDs.has(asset.id)).toBe(true)
     await act(async () => session.ready(asset.id))
@@ -141,7 +141,7 @@ describe("session connection cancellation", () => {
     await act(async () => root.render(<StrictMode><Restore /></StrictMode>))
     expect(connect).toHaveBeenCalledTimes(1)
     expect(session.sessions).toEqual([asset.id])
-    expect(session.connectionURLs[asset.id]).toBe("restored-ticket")
+    expect(session.connections[asset.id]).toEqual(ticket("restored-ticket"))
     await act(async () => session.ready(asset.id))
   })
 })
